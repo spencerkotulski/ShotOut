@@ -44,7 +44,7 @@ partial class Editor {
         previewPending=false; if(previewClock!=null)previewClock.Stop(); RenderPreview(true);
     }
     void RenderPreview(bool quality) {
-        if(welcome!=null&&(fileName!="Untitled"||dirty||Marks.Count>0))welcome.Hide();
+        if(welcome!=null&&(fileName!="Untitled"||dirty||Marks.Count>0))SetWelcome(false);
         var next=Art.Render(Background,Marks,quality); var old=Preview;Preview=next;if(old!=null)old.Dispose();
         if(!dragging&&!moving&&!resizing) { SyncLayers(); UpdateStatus(); } View.Invalidate();
     }

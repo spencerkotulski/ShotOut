@@ -21,23 +21,48 @@ static class RichLayout {
         bool remove=true;for(int i=start;i<start+length;i++){input.Select(i,1);if(((input.SelectionFont??input.Font).Style&flag)==0)remove=false;}
         for(int i=start;i<start+length;i++){input.Select(i,1);var font=input.SelectionFont??input.Font;using(var f=new Font(font,remove?font.Style&~flag:font.Style|flag))input.SelectionFont=f;}input.Select(start,length);input.Focus();
     }
+    public static SizeF NaturalSize(Graphics graphics,Mark mark){
+        var runs=mark.Runs;bool rich=runs!=null&&runs.Count>0&&String.Concat(runs.Select(run=>run.Text))==mark.Text;
+        var styles=new List<int>();if(rich)foreach(var run in runs)for(int i=0;i<run.Text.Length;i++)styles.Add(run.Style&7);
+        var fonts=new Dictionary<int,Font>();float longest=0,lineWidth=0,lineHeight=0;int lines=1;
+        using(var format=(StringFormat)StringFormat.GenericTypographic.Clone()){
+            format.FormatFlags|=StringFormatFlags.MeasureTrailingSpaces|StringFormatFlags.NoWrap;
+            Func<int,Font> getFont=delegate(int style){Font font;if(!fonts.TryGetValue(style,out font)){font=new Font("Segoe UI",mark.Size,(FontStyle)style,GraphicsUnit.Pixel);fonts[style]=font;}return font;};
+            try {
+                if(!rich){var font=getFont((int)BaseStyle(mark));lineHeight=font.GetHeight(graphics);var parts=mark.Text.Replace("\r","").Split('\n');lines=parts.Length;foreach(var part in parts)longest=Math.Max(longest,graphics.MeasureString(part,font,PointF.Empty,format).Width);}
+                else {for(int i=0;i<mark.Text.Length;i++){char c=mark.Text[i];if(c=='\r')continue;if(c=='\n'){longest=Math.Max(longest,lineWidth);lineWidth=0;lines++;continue;}var font=getFont(styles[i]);lineWidth+=graphics.MeasureString(c.ToString(),font,PointF.Empty,format).Width;lineHeight=Math.Max(lineHeight,font.GetHeight(graphics));}longest=Math.Max(longest,lineWidth);lineHeight=Math.Max(lineHeight,mark.Size*1.3f);}
+                return new SizeF(Math.Max(1,longest),Math.Max(1,lines*lineHeight));
+            }finally{foreach(var font in fonts.Values)font.Dispose();}
+        }
+    }
+    public static int Alignment(Mark mark){return mark.TextAlignment<0?(mark.Kind=="Balloon"?1:0):Math.Max(0,Math.Min(2,mark.TextAlignment));}
     public static void Draw(Graphics g,Mark mark,RectangleF bounds) {
-        var runs=mark.Runs;if(runs==null||runs.Count==0||String.Concat(runs.Select(x=>x.Text))!=mark.Text) {using(var f=new Font(mark.Kind=="Emoji"?"Segoe UI Emoji":"Segoe UI",mark.Size,BaseStyle(mark),GraphicsUnit.Pixel))using(var brush=new SolidBrush(Color.FromArgb(mark.Color)))g.DrawString(mark.Text,f,brush,bounds);return;}
+        if(mark.Kind=="Text"){bounds.X-=mark.TextInsetLeft;bounds.Y-=mark.TextInsetTop;bounds.Width+=mark.TextInsetLeft+mark.TextInsetRight;bounds.Height+=mark.TextInsetTop+mark.TextInsetBottom;}
+        var runs=mark.Runs;int alignment=Alignment(mark);
+        if(runs==null||runs.Count==0||String.Concat(runs.Select(x=>x.Text))!=mark.Text) {
+            using(var f=new Font(mark.Kind=="Emoji"?"Segoe UI Emoji":"Segoe UI",mark.Size,BaseStyle(mark),GraphicsUnit.Pixel))using(var brush=new SolidBrush(Color.FromArgb(mark.Color)))using(var format=(StringFormat)StringFormat.GenericTypographic.Clone()){format.Alignment=(StringAlignment)alignment;format.LineAlignment=mark.Kind=="Balloon"?StringAlignment.Center:StringAlignment.Near;g.DrawString(mark.Text,f,brush,bounds,format);}return;
+        }
         var text=mark.Text;var styles=new List<int>();foreach(var run in runs)for(int i=0;i<run.Text.Length;i++)styles.Add(run.Style&7);
         var fonts=new Dictionary<int,Font>();var widths=new Dictionary<string,float>();var state=g.Save();
         using(var brush=new SolidBrush(Color.FromArgb(mark.Color)))using(var format=(StringFormat)StringFormat.GenericTypographic.Clone()) {
-            format.FormatFlags|=StringFormatFlags.MeasureTrailingSpaces|StringFormatFlags.NoWrap;g.SetClip(bounds);float x=bounds.Left,y=bounds.Top,lineHeight=mark.Size*1.3f;
+            format.FormatFlags|=StringFormatFlags.MeasureTrailingSpaces|StringFormatFlags.NoWrap;g.SetClip(bounds,System.Drawing.Drawing2D.CombineMode.Intersect);
             try {
                 Func<int,Font> font=delegate(int style){if(!fonts.ContainsKey(style))fonts[style]=new Font("Segoe UI",mark.Size,(FontStyle)style,GraphicsUnit.Pixel);return fonts[style];};
                 Func<int,float> width=delegate(int index){string key=styles[index]+":"+text[index];float w;if(!widths.TryGetValue(key,out w)){w=g.MeasureString(text[index].ToString(),font(styles[index]),PointF.Empty,format).Width;widths[key]=w;}return w;};
+                var lines=new List<List<int>>();var line=new List<int>();float used=0;
                 for(int i=0;i<text.Length;i++) {
-                    char c=text[i];if(c=='\r')continue;if(c=='\n'){x=bounds.Left;y+=lineHeight;continue;}
-                    if(!Char.IsWhiteSpace(c)&&(i==0||Char.IsWhiteSpace(text[i-1]))) {float word=0;for(int j=i;j<text.Length&&!Char.IsWhiteSpace(text[j]);j++)word+=width(j);if(x>bounds.Left&&word<=bounds.Width&&x+word>bounds.Right){x=bounds.Left;y+=lineHeight;} }
-                    float w=width(i);if(x+w>bounds.Right&&x>bounds.Left){x=bounds.Left;y+=lineHeight;}if(y+mark.Size>bounds.Bottom)break;g.DrawString(c.ToString(),font(styles[i]),brush,new PointF(x,y),format);x+=w;
+                    char c=text[i];if(c=='\r')continue;if(c=='\n'){lines.Add(line);line=new List<int>();used=0;continue;}
+                    if(!Char.IsWhiteSpace(c)&&(i==0||Char.IsWhiteSpace(text[i-1]))) {float word=0;for(int j=i;j<text.Length&&!Char.IsWhiteSpace(text[j]);j++)word+=width(j);if(used>0&&word<=bounds.Width&&used+word>bounds.Width){lines.Add(line);line=new List<int>();used=0;} }
+                    float w=width(i);if(used+w>bounds.Width&&used>0){lines.Add(line);line=new List<int>();used=0;}line.Add(i);used+=w;
+                }
+                lines.Add(line);float lineHeight=mark.Size*1.3f;int visible=Math.Min(lines.Count,Math.Max(1,(int)Math.Floor((bounds.Height-mark.Size)/lineHeight)+1));float blockHeight=(visible-1)*lineHeight+mark.Size*1.25f;float y=bounds.Top+(mark.Kind=="Balloon"?Math.Max(0,(bounds.Height-blockHeight)/2):0);
+                foreach(var row in lines){int count=row.Count;while(count>0&&Char.IsWhiteSpace(text[row[count-1]]))count--;float length=0;for(int i=0;i<count;i++)length+=width(row[i]);float x=bounds.Left+(alignment==1?(bounds.Width-length)/2:alignment==2?bounds.Width-length:0);
+                    if(y+mark.Size>bounds.Bottom)break;foreach(int i in row){g.DrawString(text[i].ToString(),font(styles[i]),brush,new PointF(x,y),format);x+=width(i);}y+=mark.Size*1.3f;
                 }
             }finally{foreach(var f in fonts.Values)f.Dispose();g.Restore(state);}
         }
     }
+
 }
 static class RichTextEntry {
     public static string Ask(IWin32Window owner,Mark mark) {
@@ -56,9 +81,9 @@ static class RichTextEntry {
 partial class Editor {
     public void VerifySettingsAndText(List<string> report,string folder) {
         Preferences.Testing=true;Action<bool,string> check=delegate(bool ok,string label){if(!ok)throw new Exception(label);report.Add("PASS "+label);};
-        var p=new Preferences();p.AllowMultiple=true;p.CaptureDelay=4;p.IncludeCursor=true;p.Tools.First(x=>x.Action=="Select").Chord=(int)Keys.Q;p.Save(System.IO.Path.Combine(folder,"preferences-test.xml"));var saved=Preferences.Read(System.IO.Path.Combine(folder,"preferences-test.xml"));check(saved.AllowMultiple&&saved.CaptureDelay==4&&saved.IncludeCursor&&saved.ToolMap()[Keys.Q]=="Select","Preferences and custom tool hotkeys persist");
+        var p=new Preferences();p.AllowMultiple=true;p.CaptureDelay=4;p.IncludeCursor=true;p.Tools.First(x=>x.Action=="Select").Chord=(int)Keys.Y;p.Save(System.IO.Path.Combine(folder,"preferences-test.xml"));var saved=Preferences.Read(System.IO.Path.Combine(folder,"preferences-test.xml"));check(saved.AllowMultiple&&saved.CaptureDelay==4&&saved.IncludeCursor&&saved.ToolMap()[Keys.Y]=="Select","Preferences and custom tool hotkeys persist");
         using(var settings=new SettingsDialog(saved,false)) {settings.Show();Application.DoEvents();using(var preview=new Bitmap(settings.Width,settings.Height)){settings.DrawToBitmap(preview,new Rectangle(Point.Empty,preview.Size));preview.Save(System.IO.Path.Combine(folder,"settings-interface.png"));}settings.Hide();}
-        var copy=saved.Clone();check(copy.Tools.Count==23&&copy.Capture.Count==3,"Settings clone preserves unique bindings");copy.Tools[1].Chord=copy.Tools[0].Chord;bool rejected=false;try{copy.Validate();}catch(ArgumentException){rejected=true;}check(rejected,"Duplicate hotkeys rejected");check(LoginStartup.Command=="\""+Application.ExecutablePath+"\" --startup","Startup command quotes the executable path");
+        var copy=saved.Clone();check(copy.Tools.Count==new Preferences().Tools.Count&&copy.Capture.Count==3,"Settings clone preserves unique bindings");copy.Tools[1].Chord=copy.Tools[0].Chord;bool rejected=false;try{copy.Validate();}catch(ArgumentException){rejected=true;}check(rejected,"Duplicate hotkeys rejected");check(LoginStartup.Command=="\""+Application.ExecutablePath+"\" --startup","Startup command quotes the executable path");
         using(var input=new RichTextBox {Text="Bold plain italic underlined",Font=new Font("Segoe UI",18,FontStyle.Regular,GraphicsUnit.Pixel)}) {
             input.Select(0,4);RichLayout.Toggle(input,FontStyle.Bold);input.Select(11,6);RichLayout.Toggle(input,FontStyle.Italic);input.Select(18,10);RichLayout.Toggle(input,FontStyle.Underline);var runs=RichLayout.Capture(input);
             check(runs.Any(x=>x.Text.Contains("Bold")&&(x.Style&(int)FontStyle.Bold)!=0)&&runs.Any(x=>x.Text.Contains("italic")&&(x.Style&(int)FontStyle.Italic)!=0)&&runs.Any(x=>x.Text.Contains("underlined")&&(x.Style&(int)FontStyle.Underline)!=0),"Per-selection bold italic and underline captured");

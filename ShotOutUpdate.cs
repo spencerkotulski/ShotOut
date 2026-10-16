@@ -17,16 +17,40 @@ static partial class Art {
             if(m.Shadow)DrawShadow(target,m,updateRegion);
             using(var g=Graphics.FromImage(target))using(var pen=new Pen(Color.FromArgb(m.Color),m.Width))using(var attributes=new ImageAttributes()){
                 if(updateRegion.HasValue)g.SetClip(updateRegion.Value);g.SmoothingMode=SmoothingMode.AntiAlias;pen.LineJoin=LineJoin.Round;
-                if(m.MagnifyLinked){var center=new PointF(lens.Left+lens.Width/2,lens.Top+lens.Height/2);var origin=new PointF(source.Left+source.Width/2,source.Top+source.Height/2);if(!source.IntersectsWith(lens))g.DrawLine(pen,EdgePoint(source,center),EdgePoint(lens,origin));Frame(g,pen,source);}
+                if(m.MagnifyLinked){pen.Width=Math.Max(1,m.Width);var center=new PointF(lens.Left+lens.Width/2,lens.Top+lens.Height/2);var origin=new PointF(source.Left+source.Width/2,source.Top+source.Height/2);if(!source.IntersectsWith(lens))g.DrawLine(pen,EdgePoint(source,center),EdgePoint(lens,origin));if(m.Width>0){pen.Width=m.Width;Frame(g,pen,source);}}
                 var state=g.Save();g.SetClip(lens,CombineMode.Intersect);g.InterpolationMode=InterpolationMode.HighQualityBicubic;g.PixelOffsetMode=PixelOffsetMode.HighQuality;attributes.SetWrapMode(WrapMode.TileFlipXY);
                 g.DrawImage(image,new[]{new PointF(lens.Left,lens.Top),new PointF(lens.Right,lens.Top),new PointF(lens.Left,lens.Bottom)},new RectangleF(source.X-crop.X,source.Y-crop.Y,source.Width,source.Height),GraphicsUnit.Pixel,attributes);g.Restore(state);
                 // Stroke after restoring the image clip, fully inset so all four 1px sides survive.
-                g.PixelOffsetMode=PixelOffsetMode.Default;pen.Width=m.Width;Frame(g,pen,lens);
+                g.PixelOffsetMode=PixelOffsetMode.Default;if(m.Width>0){pen.Width=m.Width;Frame(g,pen,lens);}
             }
         }
     }
 }
 partial class Editor {
+    static bool OptionalOutline(string kind){return kind=="Rectangle"||kind=="Rounded"||kind=="Ellipse"||kind=="Balloon"||kind=="Magnify";}
+    void ApplyLayerVisibility(){
+        bool show=Preferences.Current.ShowLayers;
+        if(!show){CloseInlineRename(true);ClearLayerHover();}
+        inspector.Parent.SuspendLayout();layers.Visible=layerTitle.Visible=layerButtons.Visible=show;
+        inspector.Dock=show?DockStyle.Top:DockStyle.Fill;
+        inspector.Parent.ResumeLayout(true);UpdateInspector();FitInspectorControls();
+    }
+    public void VerifyPanelAndOutlines(List<string> report,string folder){
+        Action<bool,string> check=delegate(bool ok,string label){if(!ok)throw new Exception(label);report.Add("PASS "+label);};
+        bool original=Preferences.Current.ShowLayers;Show();Application.DoEvents();
+        Preferences.Current.ShowLayers=false;ApplyLayerVisibility();Application.DoEvents();
+        check(!layers.Visible&&!layerTitle.Visible&&!layerButtons.Visible&&inspector.Dock==DockStyle.Fill,"Hidden Layers gives full sidebar to annotation options");
+        Preferences.Current.Save(System.IO.Path.Combine(folder,"panel-settings.xml"));check(!Preferences.Read(System.IO.Path.Combine(folder,"panel-settings.xml")).ShowLayers,"Layers visibility persists in settings");
+        Preferences.Current.ShowLayers=true;ApplyLayerVisibility();Application.DoEvents();check(layers.Visible&&layerTitle.Visible&&layerButtons.Visible&&inspector.Dock==DockStyle.Top,"Layers panel can be restored");
+        foreach(string kind in new[]{"Rectangle","Rounded","Ellipse","Balloon","Magnify"}){
+            SetTool(kind);var mark=new Mark{Kind=kind,X=20,Y=20,W=80,H=60,Width=3,Fill=true,FillColor=Color.White.ToArgb(),Color=Color.Red.ToArgb(),Text=""};Marks.Clear();Marks.Add(mark);Active=mark;SyncStyle();thickness.Value=0;
+            check(mark.Width==0&&thickness.Minimum==0,"Zero outline can be selected for "+kind);SyncStyle();check(thickness.Value==0,"Zero outline survives selection for "+kind);
+            foreach(bool quality in new[]{false,true})using(var bg=Blank(140,120))using(var image=Art.Render(bg,new List<Mark>{mark},quality)){bool red=false;for(int y=0;y<image.Height&&!red;y++)for(int x=0;x<image.Width;x++){var c=image.GetPixel(x,y);if(c.R>c.G+20){red=true;break;}}check(!red,"No residual hairline in "+kind+(quality?" export":" preview"));}
+        }
+        foreach(string kind in new[]{"Arrow","Line","Pen","Blur","Pixelate"}){SetTool(kind);check(thickness.Minimum==1&&thickness.Value>=1,"Minimum one retained for "+kind);}
+        Preferences.Current.ShowLayers=original;ApplyLayerVisibility();Hide();LoadBitmap(Blank(100,100),"Test");
+    }
+
     int layerHover=-1,layerInsertion=-1;
     NumberField magnifyPercent;CheckBox magnifyLinked;FlowLayoutPanel magnifyZoomRow,magnifyLinkRow;
     void ClearLayerHover(){if(layerHover<0)return;layerHover=-1;layers.Invalidate();View.Invalidate();}

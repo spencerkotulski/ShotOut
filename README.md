@@ -1,5 +1,70 @@
 # ShotOut
 
+## Window-frame regression fix
+
+Fixed Windows repainting a native title bar and border over the integrated toolbar when opening or closing a modal dialog, such as text entry. Activation now updates without native frame painting, caption bits are guarded during runtime style changes, and the toolbar repaints when the editor is re-enabled. Regression checks open and apply the real text dialog repeatedly, verify native frame/client bounds, and check maximize/restore afterward.
+
+
+## Integrated toolbar and fill opacity
+
+The separate Windows title bar has been replaced with minimize, maximize/restore, and close controls in the app toolbar. Drag its unused space to move the window; double-click it to maximize/restore. Window edges remain resizable, maximizing respects the taskbar, and Close still hides ShotOut to the tray.
+
+Capture is now a split button: click Capture for region capture, or its down arrow for capture options. Alt+Down or F4 opens the menu when the button has focus.
+
+Filled annotations have Fill opacity (0–100%) in the inspector. It adjusts shape, bubble, bucket, step, highlight, redact, eraser, spotlight, and cursor fills while preserving outlines and annotation text. Default is 100%, preserving the existing highlight/spotlight transparency. Image layers and strokes retain their existing rendering. Opacity supports Undo/Redo and editable projects.
+
+
+## Initial image layer and resize redraw
+
+New screenshots and opened images now start with a Screenshot image layer over a transparent canvas. Select it in Layers or use Select (V) to move, resize, duplicate, rename, hide, or delete it. Drawing tools continue to draw over the screenshot normally. Images pasted into a fresh start tab also become image layers. Automatic clipboard copy still includes the actual screenshot, and Place original beside canvas still uses the original pixels. Editable projects retain the screenshot layer.
+
+The canvas now repaints its full viewport when the window size changes, clearing stale image fragments when shrinking and expanding the editor.
+
+
+## Mixed-monitor capture and Bucket fill
+
+Capture now enables per-monitor DPI awareness and reads the connected monitors in native desktop coordinates for every capture. Its overlay remains the exact size of the captured desktop when Windows sends DPI-change notifications, including layouts with screens left of or above the primary monitor. Restart ShotOut fully to use the new DPI mode.
+
+Bucket fill (Q) fills the connected area under your click using the selected Fill color. Tolerance 0 matches exact colors; higher values include similar colors. It samples the visible image and annotations, then adds a separate Bucket fill layer. You can recolor, move, hide, delete, undo, or redo that layer. If Q was already assigned to a custom tool shortcut, that binding is preserved; assign Bucket a free key in Settings.
+
+
+## Automatic copy and window snapping
+
+Completed region, window, and full-screen captures copy to the clipboard automatically and open in an editor tab. Paste directly into Slack with Ctrl+V. After editing markup, use Copy image again for the edited version. Disable automatic capture copying in Settings if preferred. Clipboard failures retain the capture in the editor and show a retry message.
+
+Region capture now highlights the window under the pointer. Click it to capture that window, or drag at least 4 pixels to select an exact custom region. Hold Alt to suppress snapping. Esc or right-click cancels. Settings → Snap to windows during region capture switches this feature off. Snapping follows window bounds; it does not detect individual text or webpage objects.
+
+
+## Tight text selections and automatic canvas margins
+
+Changing text size fits the selection to the visible text, with a small fixed gap. Growing and shrinking text no longer leaves an oversized selection. Text boxes preserve explicit line breaks; speech bubbles retain their normal inner padding.
+
+Automatically added canvas space retracts when the outlying annotation shrinks, moves back inside, or is deleted. The original image area is always preserved. Space explicitly added through Expand canvas is preserved too. The minimum canvas area is stored per tab and in new editable projects, and Undo/Redo restores both annotations and canvas dimensions. Older projects without this metadata use their saved image size as the minimum.
+
+Download/Save and Effects are next to Undo/Redo. Settings is the gear icon at the far right.
+
+
+## Text growth, new tabs, and system tray
+
+Increasing text size automatically grows text and speech-bubble bounds; the canvas expands when necessary. The + next to the tabs (Ctrl+N) creates a fresh start tab with Open image, Paste image, Capture, and Blank canvas choices. Other tabs keep their edits. The header shows only the logo beside Capture.
+
+Closing X hides ShotOut to the Windows notification area and keeps capture shortcuts active. Double-click the tray icon or choose Open ShotOut to restore it. The tray menu also offers Capture, Settings, and Exit ShotOut. Exit checks for unsaved work; hiding preserves open tabs in memory. Start on Windows startup now starts hidden in the tray. If startup was already enabled, save Settings again after moving to this executable to update its startup path.
+
+
+Cut direction remains flexible for the first 4 screen pixels, then stays locked until release; each new drag chooses again. Speech-bubble text centers vertically within the bubble body and horizontally by default. The sidebar uses one-click Left / Center / Right alignment icons. The top-right Effects button has an image-and-sparkle icon.
+
+
+## Canvas, text alignment, and cut gestures
+
+Copy image is beside File and Paste in the top toolbar (Ctrl+C still works). Moving or duplicating annotations beyond any canvas edge expands the canvas on release; inserted images retain their original size. Save, Copy, and editable projects include the entire expanded canvas. Expansion is undoable and preserves layers. New empty canvas areas are transparent. Use Image → Expand canvas for a specific larger size, or Image → Place original image beside canvas for an unmarked copy beside your current annotations. Place current edited view beside canvas duplicates the rendered view as a separate image layer.
+
+Text and speech bubbles have Left, Center, and Right alignment in the sidebar, including rich text. New speech bubbles start centered; new text boxes start left aligned.
+
+Cut automatically detects direction on each drag: sideways removes a vertical strip, and up/down removes a horizontal strip. The full strip is tinted while dragging and removed on release. Ctrl+Z restores it. Crop still uses a rectangular selection and Enter/Apply to confirm.
+
+
+Settings → Show Layers panel can hide the entire layer section and give annotation options the full sidebar. This preference is saved. Rectangle, ellipse, speech balloon, and Magnify outlines accept 0 px (no outline); arrows, pen strokes, and effect strengths retain a minimum of 1.
+
 
 
 

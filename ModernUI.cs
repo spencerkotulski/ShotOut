@@ -29,6 +29,7 @@ static class Glyph {
                 case "Blur": for(int y=5;y<21;y+=5)for(int x=4;x<22;x+=5) { using(var b=new SolidBrush(Color.FromArgb((x+y)%3==0?230:110,color)))g.FillEllipse(b,x,y,2.5f,2.5f); } break;
                 case "Spotlight": g.DrawRectangle(p,3,4,18,16); g.DrawEllipse(p,8,8,8,8); g.DrawLine(p,4,5,8,9); g.DrawLine(p,20,19,16,15); break;
                 case "Magnify": g.DrawEllipse(p,3,3,13,13); g.DrawLine(p,15,15,21,21); g.DrawLine(p,7,9,12,9); g.DrawLine(p,9.5f,6.5f,9.5f,11.5f); break;
+                case "Bucket": g.DrawPolygon(p,new Point[]{new Point(4,12),new Point(12,4),new Point(20,12),new Point(12,20)});g.DrawLine(p,6,14,18,14);g.DrawLines(p,new Point[]{new Point(7,7),new Point(7,3),new Point(10,3),new Point(15,8)});g.FillEllipse(brush,19,17,4,5);break;
                 case "Eraser": g.DrawPolygon(p,new Point[]{new Point(3,15),new Point(13,4),new Point(21,11),new Point(13,20),new Point(8,20)}); g.DrawLine(p,8,10,16,17); g.DrawLine(p,13,21,22,21); break;
                 case "Crop": g.DrawLines(p,new Point[]{new Point(7,3),new Point(7,17),new Point(21,17)}); g.DrawLines(p,new Point[]{new Point(3,7),new Point(17,7),new Point(17,21)}); break;
                 case "Cut rows": case "Cut columns": g.DrawEllipse(p,3,14,5,5); g.DrawEllipse(p,3,4,5,5); g.DrawLine(p,8,7,21,20); g.DrawLine(p,8,16,21,3); break;
@@ -45,6 +46,9 @@ static class Glyph {
                 case "Down": g.DrawLines(p,new Point[]{new Point(6,12),new Point(12,18),new Point(18,12)}); g.DrawLine(p,12,4,12,18); break;
                 case "Delete": g.DrawLine(p,5,6,19,6); g.DrawLine(p,9,3,15,3); g.DrawLines(p,new Point[]{new Point(7,9),new Point(8,21),new Point(16,21),new Point(17,9)}); g.DrawLine(p,11,10,11,17); g.DrawLine(p,14,10,14,17); break;
                 case "Fit": g.DrawRectangle(p,6,7,12,10); g.DrawLines(p,new Point[]{new Point(3,8),new Point(3,3),new Point(8,3)}); g.DrawLines(p,new Point[]{new Point(16,21),new Point(21,21),new Point(21,16)}); break;
+                case "AlignLeft": case "AlignCenter": case "AlignRight": for(int i=0;i<4;i++){float width=i%2==0?17:11;float x=name=="AlignLeft"?3:name=="AlignRight"?20-width:(24-width)/2;g.DrawLine(p,x,5+i*4,x+width,5+i*4);}break;
+                case "Effects": g.DrawLines(p,new Point[]{new Point(12,4),new Point(3,4),new Point(3,21),new Point(21,21),new Point(21,14)});g.DrawLines(p,new Point[]{new Point(4,18),new Point(9,12),new Point(14,17),new Point(17,13),new Point(21,17)});g.DrawPolygon(p,new PointF[]{new PointF(18,1),new PointF(19.5f,5),new PointF(23,6.5f),new PointF(19.5f,8),new PointF(18,12),new PointF(16.5f,8),new PointF(13,6.5f),new PointF(16.5f,5)});break;
+                case "Settings": for(int i=0;i<8;i++){double a=i*Math.PI/4;float x=12+(float)Math.Cos(a)*8,y=12+(float)Math.Sin(a)*8;g.DrawLine(p,x,y,12+(float)Math.Cos(a)*10.3f,12+(float)Math.Sin(a)*10.3f);}g.DrawEllipse(p,5,5,14,14);g.DrawEllipse(p,9,9,6,6);break;
                 case "Adjust": g.DrawLine(p,5,3,5,21); g.DrawLine(p,12,3,12,21); g.DrawLine(p,19,3,19,21); g.FillRectangle(brush,2,7,6,4); g.FillRectangle(brush,9,14,6,4); g.FillRectangle(brush,16,6,6,4); break;
                 case "More": for(int x=4;x<22;x+=8)g.FillEllipse(brush,x-1,11,2.5f,2.5f); break;
             }
@@ -120,13 +124,14 @@ partial class Editor {
     Label zoomLabel, inspectorHint, widthCaption;
     Panel cropActions;
     FlowLayoutPanel inspector;
+    Control layerTitle, layerButtons;
     Control variantRow, strokeRow, fillRow, weightRow, radiusRow, textRow, formatRow, editRow;
     ChoiceButton variant;
     Button applyCrop;
     Dictionary<string,string> lastVariants=new Dictionary<string,string>();
     [DllImport("dwmapi.dll")] static extern int DwmSetWindowAttribute(IntPtr h,int attribute,ref int value,int size);
     static string Family(string name) { switch(name) { case "Rounded":return "Rectangle"; case "Line":case "Double arrow":case "Dashed arrow":case "Curved arrow":case "Dashed curved arrow":return "Arrow"; case "Blur":case "Pixelate":return "Redact";  case "Cut columns":return "Cut rows"; case "Emoji":case "Cursor":return "Image"; default:return name; } }
-    static string DefaultKeyFor(string name) { switch(name) { case "Select":return "V";case "Arrow":case "Dashed arrow":case "Curved arrow":case "Dashed curved arrow":return "A";case "Double arrow":return "D";case "Line":return "L";case "Rectangle":case "Rounded":return "R";case "Ellipse":return "E";case "Pen":return "F";case "Text":return "T";case "Balloon":return "O";case "Step":return "N";case "Highlight":return "H";case "Redact":return "X";case "Blur":return "B";case "Pixelate":return "P";case "Spotlight":return "S";case "Magnify":return "M";case "Eraser":return "W";case "Crop":return "C";case "Cut rows":return "U";case "Cut columns":return "G";case "Image":return "I";case "Emoji":return "J";case "Cursor":return "K"; default:return ""; } }
+    static string DefaultKeyFor(string name) { switch(name) { case "Select":return "V";case "Arrow":case "Dashed arrow":case "Curved arrow":case "Dashed curved arrow":return "A";case "Double arrow":return "D";case "Line":return "L";case "Rectangle":case "Rounded":return "R";case "Ellipse":return "E";case "Pen":return "F";case "Text":return "T";case "Balloon":return "O";case "Step":return "N";case "Highlight":return "H";case "Redact":return "X";case "Blur":return "B";case "Pixelate":return "P";case "Spotlight":return "S";case "Magnify":return "M";case "Bucket":return "Q";case "Eraser":return "W";case "Crop":return "C";case "Cut rows":return "U";case "Cut columns":return "G";case "Image":return "I";case "Emoji":return "J";case "Cursor":return "K"; default:return ""; } }
     static string KeyFor(string name) { var item=Preferences.Current.Tools.FirstOrDefault(b=>b.Action==name);return item==null?DefaultKeyFor(name):((Keys)item.Chord).ToString(); }
     void RememberVariant(string name) { lastVariants[Family(name)]=name; }
     void ChooseTool(string name) { string value; SetTool(lastVariants.TryGetValue(name,out value)?value:name); }
@@ -142,29 +147,29 @@ partial class Editor {
         panel=Color.FromArgb(30,32,38); BackColor=panel; text=Color.FromArgb(233,236,243); muted=Color.FromArgb(149,157,174);
         tips=new ToolTip { InitialDelay=350,ReshowDelay=100,AutoPopDelay=6000,BackColor=Color.FromArgb(48,52,62),ForeColor=text };
         Disposed+=delegate { tips.Dispose(); };
-        var header=new Panel { Dock=DockStyle.Top,Height=66,Padding=new Padding(16,12,16,10),BackColor=Color.FromArgb(26,28,33) };
-        var brand=new Panel {Dock=DockStyle.Left,Width=158};var brandTitle=new Label {Text="ShotOut",Font=new Font("Segoe UI",18,FontStyle.Bold,GraphicsUnit.Pixel),ForeColor=text,Dock=DockStyle.Fill,TextAlign=ContentAlignment.MiddleLeft};brandLogo=new PictureBox {Dock=DockStyle.Left,Width=35,SizeMode=PictureBoxSizeMode.Zoom,Padding=new Padding(0,6,7,6),AccessibleName="ShotOut logo"};brand.Controls.Add(brandTitle);brand.Controls.Add(brandLogo);
+        var header=new Panel { Dock=DockStyle.Top,Height=66,Padding=new Padding(12,12,16,10),BackColor=Color.FromArgb(26,28,33) };
+        var brand=new Panel {Dock=DockStyle.Left,Width=44};brandLogo=new PictureBox {Dock=DockStyle.Fill,SizeMode=PictureBoxSizeMode.Zoom,Padding=new Padding(0,6,10,6),AccessibleName="ShotOut logo"};brand.Controls.Add(brandLogo);
 
-        var primary=new FlowLayoutPanel { Dock=DockStyle.Left,Width=460,WrapContents=false };
-        primary.Controls.Add(ActionButton("Capture","Capture","Capture region ("+CaptureLabel("Region")+")",delegate { Capture("Region"); },112));
-        primary.Controls.Add(ActionButton("", "More","Capture options",CaptureOptions,34));
-        primary.Controls.Add(ActionButton("","Open","Open image (Ctrl+O)",Open,36));
+        var primary=new FlowLayoutPanel { Dock=DockStyle.Left,Width=650,WrapContents=false };
+        primary.Controls.Add(CreateCaptureSplit());
+        primary.Controls.Add(ActionButton("File","Open","Open image (Ctrl+O)",Open,68));
+        primary.Controls.Add(ActionButton("","Copy","Copy image (Ctrl+C)",CopyImage,36));
         primary.Controls.Add(ActionButton("","Paste","Paste image or text (Ctrl+V)",Paste,36));
         primary.Controls.Add(ActionButton("","Undo","Undo (Ctrl+Z)",Undo,36));
         primary.Controls.Add(ActionButton("","Redo","Redo (Ctrl+Y)",Redo,36));
-        var output=new FlowLayoutPanel { Dock=DockStyle.Right,Width=322,WrapContents=false };
-        primary.Controls.Add(ActionButton("Settings",null,"Settings",ShowSettings,88));
-        output.Controls.Add(ActionButton("Image","Adjust","Image adjustments",ImageMenu,90)); output.Controls.Add(ActionButton("","Save","Save image or project (Ctrl+S)",SaveMenu,38));
-        var copy=ActionButton("Copy image","Copy","Copy image (Ctrl+C)",CopyImage,166); copy.BackColor=Color.FromArgb(84,119,239); copy.ForeColor=Color.White; output.Controls.Add(copy);
-        header.Controls.Add(primary); header.Controls.Add(brand); header.Controls.Add(output);
+        var output=new FlowLayoutPanel { Dock=DockStyle.Right,Width=46,WrapContents=false };
+        output.Controls.Add(ActionButton("","Settings","Settings",ShowSettings,36));
+        primary.Controls.Add(ActionButton("","Save","Save image or project (Ctrl+S)",SaveMenu,38)); primary.Controls.Add(ActionButton("Effects","Effects","Image effects",ImageMenu,100));
+        
+        header.Controls.Add(primary); header.Controls.Add(brand); header.Controls.Add(output);InstallIntegratedChrome(header);
         var documentBar=new Panel { Dock=DockStyle.Top,Height=47,Padding=new Padding(18,5,15,5),BackColor=Color.FromArgb(30,32,38) };
         documentLabel=new Label { Dock=DockStyle.Left,Width=280,ForeColor=muted,TextAlign=ContentAlignment.MiddleLeft,AutoEllipsis=true };
         var zoom=new FlowLayoutPanel { Dock=DockStyle.Right,Width=170,WrapContents=false }; zoomLabel=Caption("100%",56); zoomLabel.TextAlign=ContentAlignment.MiddleCenter; zoom.Controls.Add(zoomLabel); zoom.Controls.Add(ActionButton("","Fit","Fit image (0)",delegate { View.Fit(); UpdateStatus(); },34)); zoom.Controls.Add(ActionButton("1:1",null,"Actual pixels",delegate { View.Zoom=1; View.PanX=View.PanY=0; View.Invalidate(); UpdateStatus(); },50));
         cropActions=new Panel { Dock=DockStyle.Right,Width=236,Visible=false }; var cropButtons=new FlowLayoutPanel { Dock=DockStyle.Fill,WrapContents=false }; applyCrop=ActionButton("Apply crop",null,"Apply selection (Enter)",CommitCrop,118); applyCrop.BackColor=Color.FromArgb(68,99,197); cropButtons.Controls.Add(applyCrop); cropButtons.Controls.Add(ActionButton("Cancel",null,"Cancel selection (Esc)",delegate { Crop=null; SetTool("Select"); },82)); cropActions.Controls.Add(cropButtons);
         documentBar.Controls.Add(cropActions); documentBar.Controls.Add(zoom); documentBar.Controls.Add(documentLabel);
         var rail=new FlowLayoutPanel { Dock=DockStyle.Left,Width=68,Padding=new Padding(12,10,7,8),BackColor=Color.FromArgb(26,28,33),FlowDirection=FlowDirection.TopDown,WrapContents=false,AutoScroll=true };
-        string[][] groups={new[]{"Select"},new[]{"Arrow","Rectangle","Ellipse","Pen"},new[]{"Text","Balloon","Step","Highlight"},new[]{"Redact","Spotlight","Magnify","Eraser"},new[]{"Crop","Cut rows","Image"}};
-        foreach(var group in groups) { if(rail.Controls.Count>0) { var line=new Panel { Width=29,Height=1,BackColor=Color.FromArgb(54,58,68),Margin=new Padding(7,8,0,8) }; rail.Controls.Add(line); } foreach(string name in group) { string n=name; string label=n=="Cut rows"?"Cut out":n=="Redact"?"Redact / blur / pixelate":n=="Image"?"Insert image":n; var b=ActionButton("",n,label+" ("+KeyFor(n)+")",delegate { if(n=="Image") InsertOptions(); else ChooseTool(n); },40); b.Height=34; b.Margin=new Padding(0,1,0,1); tools[n]=b; rail.Controls.Add(b); } }
+        string[][] groups={new[]{"Select"},new[]{"Arrow","Rectangle","Ellipse","Pen"},new[]{"Text","Balloon","Step","Highlight"},new[]{"Redact","Spotlight","Magnify","Eraser","Bucket"},new[]{"Crop","Cut rows","Image"}};
+        foreach(var group in groups) { if(rail.Controls.Count>0) { var line=new Panel { Width=29,Height=1,BackColor=Color.FromArgb(54,58,68),Margin=new Padding(7,8,0,8) }; rail.Controls.Add(line); } foreach(string name in group) { string n=name; string label=n=="Cut rows"?"Cut out":n=="Redact"?"Redact / blur / pixelate":n=="Image"?"Insert image":n; var b=ActionButton("",n,label+" ("+KeyFor(n)+")",delegate { if(n=="Image") InsertOptions(); else ChooseTool(n); },40); b.Height=32; b.Margin=new Padding(0,1,0,1); tools[n]=b; rail.Controls.Add(b); } }
         var right=new Panel { Dock=DockStyle.Right,Width=268,Padding=new Padding(17,12,17,10),BackColor=Color.FromArgb(30,32,38) };
         inspector=new VerticalInspector { Dock=DockStyle.Top,Height=350,FlowDirection=FlowDirection.TopDown,WrapContents=false,Margin=new Padding(0) };
         toolTitle=new Label { Width=217,Height=36,Font=new Font("Segoe UI",16,FontStyle.Bold,GraphicsUnit.Pixel),ForeColor=text,Margin=new Padding(0) }; inspector.Controls.Add(toolTitle);
@@ -175,10 +180,10 @@ partial class Editor {
         var rr=Row(); rr.Controls.Add(Caption("Corner radius · px",145)); cornerRadius=Number(0,500,0); cornerRadius.ValueChanged+=delegate { ChangeStyle(); }; rr.Controls.Add(cornerRadius); radiusRow=rr; inspector.Controls.Add(rr); tailRow=Row(); tailBox=new ThemeCheckBox { Text="Speech bubble tail",Checked=true,Width=225,Height=34,ForeColor=text }; tailBox.CheckedChanged+=delegate { ChangeStyle(); }; tailRow.Controls.Add(tailBox); inspector.Controls.Add(tailRow);
         var tr=Row(); tr.Controls.Add(Caption("Text size · px",145)); fontSize=Number(8,240,22); fontSize.ValueChanged+=delegate { ChangeStyle(); }; tr.Controls.Add(fontSize); textRow=tr; inspector.Controls.Add(tr);
         var fmt=Row(); boldBox=new ThemeCheckBox { Text="Bold",Checked=true,Width=62,Height=32,Appearance=Appearance.Button,FlatStyle=FlatStyle.Flat,TextAlign=ContentAlignment.MiddleCenter,BackColor=Color.FromArgb(43,46,54),Margin=new Padding(0,0,7,0) }; italicBox=new ThemeCheckBox { Text="Italic",Width=62,Height=32,Appearance=Appearance.Button,FlatStyle=FlatStyle.Flat,TextAlign=ContentAlignment.MiddleCenter,BackColor=Color.FromArgb(43,46,54),Margin=new Padding(0) }; underlineBox=new ThemeCheckBox { Text="Underline",Width=80,Height=32,Appearance=Appearance.Button,FlatStyle=FlatStyle.Flat,TextAlign=ContentAlignment.MiddleCenter,BackColor=Color.FromArgb(43,46,54),Margin=new Padding(0) }; foreach(var c in new[]{boldBox,italicBox,underlineBox}) { c.FlatAppearance.BorderSize=0; c.FlatAppearance.CheckedBackColor=Color.FromArgb(61,78,122); c.CheckedChanged+=delegate { ChangeStyle(); }; fmt.Controls.Add(c); } formatRow=fmt; inspector.Controls.Add(fmt);
-        var er=Row(); er.Controls.Add(ActionButton("Edit text", "Text","Edit selected text",EditText,210)); editRow=er; inspector.Controls.Add(er); AddShadowInspector();
+        var er=Row(); er.Controls.Add(ActionButton("Edit text", "Text","Edit selected text",EditText,210)); editRow=er; inspector.Controls.Add(er); AddAlignmentInspector(); AddShadowInspector();
         inspectorHint=new Label { Width=213,Height=70,ForeColor=muted,Margin=new Padding(0,9,0,6) }; inspector.Controls.Add(inspectorHint);
-        var layerTitle=new Label { Text="Layers",Dock=DockStyle.Top,Height=35,ForeColor=text,Font=new Font("Segoe UI",13,FontStyle.Bold,GraphicsUnit.Pixel),Padding=new Padding(0,10,0,0) };
-        var layerButtons=new FlowLayoutPanel { Dock=DockStyle.Bottom,Height=42,WrapContents=false }; layerButtons.Controls.Add(ActionButton("","Up","Bring forward (Page Up)",delegate { Reorder(1); },48)); layerButtons.Controls.Add(ActionButton("","Down","Send backward (Page Down)",delegate { Reorder(-1); },48)); layerButtons.Controls.Add(ActionButton("","Copy","Duplicate layer (Ctrl+D)",Duplicate,48)); layerButtons.Controls.Add(ActionButton("","Delete","Delete layer (Delete)",Delete,48));
+        layerTitle=new Label { Text="Layers",Dock=DockStyle.Top,Height=35,ForeColor=text,Font=new Font("Segoe UI",13,FontStyle.Bold,GraphicsUnit.Pixel),Padding=new Padding(0,10,0,0) };
+        var layerButtonFlow=new FlowLayoutPanel { Dock=DockStyle.Bottom,Height=42,WrapContents=false }; layerButtons=layerButtonFlow; layerButtons.Controls.Add(ActionButton("","Up","Bring forward (Page Up)",delegate { Reorder(1); },48)); layerButtons.Controls.Add(ActionButton("","Down","Send backward (Page Down)",delegate { Reorder(-1); },48)); layerButtons.Controls.Add(ActionButton("","Copy","Duplicate layer (Ctrl+D)",Duplicate,48)); layerButtons.Controls.Add(ActionButton("","Delete","Delete layer (Delete)",Delete,48));
         layers=new ListBox { Dock=DockStyle.Fill,BackColor=right.BackColor,ForeColor=text,BorderStyle=BorderStyle.None,ItemHeight=44,DrawMode=DrawMode.OwnerDrawFixed,IntegralHeight=false }; layers.DrawItem+=DrawLayer;
         layers.SelectedIndexChanged+=delegate { if(syncing)return; Active=layers.SelectedIndex<0?null:Marks[Marks.Count-1-layers.SelectedIndex]; SyncStyle(); UpdateInspector(); View.Invalidate(); }; layers.MouseDoubleClick+=delegate(object sender,MouseEventArgs e) {int index=layers.IndexFromPoint(e.Location);if(e.Button==MouseButtons.Left&&index>=0&&e.X<layers.ClientSize.Width-30){Active=(Mark)layers.Items[index];RenameLayer();}}; WireLayers();
         right.Controls.Add(layers); right.Controls.Add(layerButtons); right.Controls.Add(layerTitle); right.Controls.Add(inspector);
@@ -192,7 +197,7 @@ partial class Editor {
     }
     void CaptureOptions() {
         var m=DarkMenu(); m.Items.Add("Capture region  ("+CaptureLabel("Region")+")",null,delegate { Capture("Region"); }); m.Items.Add("Capture all screens  ("+CaptureLabel("Screen")+")",null,delegate { Capture("Screen"); }); m.Items.Add("Capture window  ("+CaptureLabel("Window")+")",null,delegate { Capture("Window"); }); m.Items.Add(new ToolStripSeparator());
-        var settings=new FlowLayoutPanel { Width=238,Height=76,BackColor=panel,ForeColor=text }; settings.Controls.Add(Caption("Delay · seconds",145)); settings.Controls.Add(delay); settings.Controls.Add(cursorBox); m.Items.Add(new ToolStripControlHost(settings) { AutoSize=false,Size=settings.Size }); m.Closed+=delegate { settings.Controls.Remove(delay); settings.Controls.Remove(cursorBox); }; m.Show(Cursor.Position);
+        var settings=new FlowLayoutPanel { Width=238,Height=76,BackColor=panel,ForeColor=text }; settings.Controls.Add(Caption("Delay · seconds",145)); settings.Controls.Add(delay); settings.Controls.Add(cursorBox); m.Items.Add(new ToolStripControlHost(settings) { AutoSize=false,Size=settings.Size }); m.Closed+=delegate { settings.Controls.Remove(delay); settings.Controls.Remove(cursorBox); }; m.Show(captureSplit,new Point(0,captureSplit.Height+4));
     }
     void InsertOptions() { var m=DarkMenu(); m.Items.Add("Image  (I)",null,delegate { Guard(InsertImage); }); m.Items.Add("Emoji  (J)",null,delegate { SetTool("Emoji"); }); m.Items.Add("Cursor  (K)",null,delegate { SetTool("Cursor"); }); m.Show(Cursor.Position); }
     void ChangeVariant(string name) {
@@ -213,17 +218,22 @@ partial class Editor {
         if(inspector==null||cornerRadius==null)return; bool was=syncing; syncing=true;
         string k=Active!=null?Active.Kind:tool, family=Family(k); bool shape=family=="Rectangle"||family=="Ellipse", isText=family=="Text"||k=="Balloon"||k=="Emoji", isLine=family=="Arrow", privacy=family=="Redact", cut=family=="Cut rows", crop=tool=="Crop"||tool.StartsWith("Cut ");
         toolTitle.Text=k=="Rounded"?"Rectangle":cut?"Cut out":privacy?"Redact":k=="Select"?"Select a layer":k;
-        string[] modes=isLine?new[]{"Arrow","Both ends","Plain line","Dashed arrow","Curved arrow","Dashed curved arrow"}:privacy?new[]{"Solid block","Blur","Pixelate"}:cut?new[]{"Horizontal","Vertical"}:new string[0];
+        string[] modes=isLine?new[]{"Arrow","Both ends","Plain line","Dashed arrow","Curved arrow","Dashed curved arrow"}:privacy?new[]{"Solid block","Blur","Pixelate"}:new string[0];
         string selected=k=="Double arrow"?"Both ends":k=="Line"?"Plain line":k=="Balloon"?"Speech balloon":k=="Cut rows"?"Horizontal":k=="Cut columns"?"Vertical":k=="Redact"?"Solid block":k;
         if(!variant.Items.SequenceEqual(modes)) { variant.Items.Clear(); variant.Items.AddRange(modes); } variant.SelectedItem=selected;
-        variantRow.Visible=modes.Length>0; strokeRow.Visible=shape||isLine||isText||k=="Pen"||k=="Step"||k=="Highlight"||k=="Magnify";
-        colorButton.Text=isText?"Text color":"Stroke color";
+        variantRow.Visible=modes.Length>0; strokeRow.Visible=shape||isLine||isText||k=="Pen"||k=="Step"||k=="Highlight"||k=="Magnify"||k=="Bucket";
+        fillOpacityRow.Visible=HasFillOpacity(k);
+        colorButton.Text=k=="Bucket"?"Fill color":isText?"Text color":"Stroke color";
         fillRow.Visible=shape||k=="Balloon"; fillButton.Enabled=true;
         weightRow.Visible=shape||isLine||k=="Pen"||k=="Balloon"||k=="Blur"||k=="Pixelate"||k=="Magnify";
+        thickness.Minimum=OptionalOutline(k)?0:1; thickness.Value=thickness.Value;
         widthCaption.Text=k=="Blur"||k=="Pixelate"?"Strength":"Stroke · px";
+        alignmentRow.Visible=family=="Text"||k=="Balloon";
         radiusRow.Visible=family=="Rectangle"||k=="Balloon"; tailRow.Visible=k=="Balloon"; textRow.Visible=isText; formatRow.Visible=isText&&k!="Emoji"; editRow.Visible=Active!=null&&(isText||k=="Step");
-        inspectorHint.Text=k=="Magnify"?"Drag the enlarged view to move it.\nAmber source point changes the detail.":k=="Balloon"?"Drag the amber point to move the tail.\nShadow controls apply to this annotation.":crop?"Drag a region on the canvas.\nEnter to apply · Esc to leave.":k=="Select"?"Click a mark to select it.\nDrag empty space to select a group.\nDelete removes · Ctrl+D duplicates.":k=="Rectangle"||k=="Rounded"?"Drag to draw a rectangle.\nHold Shift for a square.\nAdjust rounding here anytime.":isLine?"Endpoints change direction. Middle moves.\nRound handle rotates; amber bends.":privacy?"Drag over the area to hide.\nChoose solid, blur, or pixelate above.":k=="Eraser"?"Drag to cover a detail using a nearby sampled color.":k=="Image"?"Insert an image, emoji, or cursor.\nPaste an image with Ctrl+V.":"Click or drag on the canvas.\n"+(KeyFor(k).Length>0?KeyFor(k)+" to activate · V to select.":"");
-        int height=36+85; foreach(bool show in new[]{modes.Length>0,shape||isLine||isText||k=="Pen"||k=="Step"||k=="Highlight"||k=="Magnify",shape||k=="Balloon",shape||isLine||k=="Pen"||k=="Balloon"||k=="Blur"||k=="Pixelate"||k=="Magnify",family=="Rectangle"||k=="Balloon",k=="Balloon",isText,isText&&k!="Emoji",Active!=null&&(isText||k=="Step")})if(show)height+=47;
+        inspectorHint.Text=k=="Bucket"?"Click a connected area to fill.\nTolerance controls color matching.\nFill stays on its own layer.":k=="Magnify"?"Drag the enlarged view to move it.\nAmber source point changes the detail.":k=="Balloon"?"Drag the amber point to move the tail.\nShadow controls apply to this annotation.":cut?"Drag sideways to cut columns.\nDrag up/down to cut rows. Release to apply.":crop?"Drag a region on the canvas.\nEnter to apply · Esc to leave.":k=="Select"?"Click a mark to select it.\nDrag empty space to select a group.\nDelete removes · Ctrl+D duplicates.":k=="Rectangle"||k=="Rounded"?"Drag to draw a rectangle.\nHold Shift for a square.\nAdjust rounding here anytime.":isLine?"Endpoints change direction. Middle moves.\nRound handle rotates; amber bends.":privacy?"Drag over the area to hide.\nChoose solid, blur, or pixelate above.":k=="Eraser"?"Drag to cover a detail using a nearby sampled color.":k=="Image"?"Insert an image, emoji, or cursor.\nPaste an image with Ctrl+V.":"Click or drag on the canvas.\n"+(KeyFor(k).Length>0?KeyFor(k)+" to activate · V to select.":"");
+        int height=36+85; foreach(bool show in new[]{modes.Length>0,shape||isLine||isText||k=="Pen"||k=="Step"||k=="Highlight"||k=="Magnify"||k=="Bucket",shape||k=="Balloon",shape||isLine||k=="Pen"||k=="Balloon"||k=="Blur"||k=="Pixelate"||k=="Magnify",family=="Rectangle"||k=="Balloon",k=="Balloon",isText,isText&&k!="Emoji",Active!=null&&(isText||k=="Step")})if(show)height+=47;
+        if(family=="Text"||k=="Balloon")height+=47;
+        if(HasFillOpacity(k))height+=47;
         height+=ShadowInspectorHeight(k);inspector.Height=Math.Min(height,Math.Max(190,ClientSize.Height-330));inspector.AutoScroll=true; cropActions.Visible=crop; applyCrop.Text=tool=="Crop"?"Apply crop":"Apply cut";
         foreach(var kv in tools) { var b=(ModernButton)kv.Value; b.Selected=Family(tool)==kv.Key; string current; b.IconName=lastVariants.TryGetValue(kv.Key,out current)?current:kv.Key; if(Art.IsArrow(b.IconName)&&b.IconName!="Line"&&b.IconName!="Double arrow")b.IconName="Arrow"; string label=b.IconName=="Cut rows"?"Cut out":b.IconName=="Image"?"Insert image":b.IconName; tips.SetToolTip(b,label+" ("+KeyFor(b.IconName)+")"); b.Invalidate(); }
         syncing=was;
@@ -234,7 +244,7 @@ partial class Editor {
         card.Controls.Add(new Label { Text="Capture a moment. Mark what matters. Share it anywhere.",ForeColor=muted,Width=560,Height=46,TextAlign=ContentAlignment.MiddleCenter });
         var actions=new FlowLayoutPanel { Width=560,Height=54,Padding=new Padding(25,4,0,0) }; var cap=ActionButton("Capture region","Capture","Capture region ("+CaptureLabel("Region")+")",delegate { Capture("Region"); },176); cap.BackColor=Color.FromArgb(84,119,239); actions.Controls.Add(cap); actions.Controls.Add(ActionButton("Open image","Open","Open image (Ctrl+O)",Open,154)); actions.Controls.Add(ActionButton("Paste image","Paste","Paste image (Ctrl+V)",Paste,154)); card.Controls.Add(actions);
         card.Controls.Add(new Label { Text="Ctrl+Shift+2 to capture  ·  Hover any tool to learn its shortcut",ForeColor=muted,Width=560,Height=45,TextAlign=ContentAlignment.MiddleCenter });
-        var blank=ActionButton("Start with a blank canvas",null,"Start drawing on a blank canvas",delegate { welcome.Hide(); View.Focus(); },220); blank.Margin=new Padding(170,10,0,0); card.Controls.Add(blank);
+        var blank=ActionButton("Start with a blank canvas",null,"Start drawing on a blank canvas",delegate { SetWelcome(false); View.Focus(); },220); blank.Margin=new Padding(170,10,0,0); card.Controls.Add(blank);
         welcome.Controls.Add(card); welcome.Resize+=delegate { card.Location=new Point(Math.Max(0,(welcome.Width-card.Width)/2),Math.Max(0,(welcome.Height-card.Height)/2)); }; View.Controls.Add(welcome);
     }
     public void VerifyModernUI(List<string> report,string folder) {
