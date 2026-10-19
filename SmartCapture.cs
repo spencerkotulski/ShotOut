@@ -32,6 +32,7 @@ partial class Editor {
     static void CopyCaptureBitmap(Bitmap image){var data=new DataObject();data.SetData(DataFormats.Bitmap,true,image);Clipboard.SetDataObject(data,true,10,80);}
     string CompleteCapture(Bitmap image,Action<Bitmap> clipboardWriter=null){
         AddDocument(image,"Capture "+(++captureSerial),true,true);
+        ShowCapturePreview();
         if(!Preferences.Current.AutoCopyCapture)return "Capture added to editor.";
         try{using(var captured=Art.Render(Background,Marks))(clipboardWriter??CopyCaptureBitmap)(captured);return "Capture copied · Paste with Ctrl+V. Edit here and Copy again for markup.";}
         catch(Exception){return "Capture saved in editor. Clipboard is unavailable; use Copy image to retry.";}

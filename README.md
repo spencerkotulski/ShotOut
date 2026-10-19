@@ -1,5 +1,41 @@
 # ShotOut
 
+## v1.3.4: sharp Clone Stamp sampling
+
+Fixed permanent clone softness at fractional zoom levels. Clone offsets now align to native image pixels and sample without interpolation, preserving text and fine details inside the brush. Hardness still controls edge feathering and opacity still controls blending. The hover sample follows the same pixel alignment. Newly painted clones retain source detail; previously blurred strokes need to be undone and repainted from the original source.
+
+## v1.3.3: smoother zoom and canvas interaction
+
+Zooming uses the existing composited image while the wheel is moving. After a 180 ms pause, sharp display-resolution markup is restored once at the final zoom. Export resolution, markup content, privacy effects, and Undo are unchanged. Canvas interaction uses a faster image sampler while moving, a reusable premultiplied interaction cache is capped at one million pixels (about 4 MB), the transparency checker is reused, and zoom status updates avoid refreshing document tabs. No dependencies or background rendering threads were added.
+
+## v1.3.2: Clone Stamp hardness and opacity
+
+Clone Stamp includes Hardness (0–100%) and Opacity (0–100%) controls. Hardness controls the feathered edge. Opacity applies evenly across each stroke regardless of dragging speed; release and paint again to build up coverage. The hover preview reflects both settings. Both default to 100% to preserve existing behavior. Soft painting uses brush-area tiles and retains one clone layer with Undo per stroke.
+
+## v1.3.1: fluid Clone Stamp and screenshot thumbnails
+
+Clone Stamp (Z): Alt-click a source, then drag to paint continuous strokes. A translucent sample preview follows the brush before painting. Strokes reuse one clone layer per document; each stroke still has its own Undo step. Painting brings that layer to the top. Existing moved or resized clone content is preserved when painting again.
+
+New tabs display actual image thumbnails and folder icons from the configured screenshot folder. Thumbnails load in the background, with at most 200 per page, and release the original files immediately. No additional packages are required.
+
+## v1.1.1: resizing, compact toolbar, and Hand
+
+Restored native resizing from every edge and corner by reserving a resize gutter around the borderless window, so toolbar and sidebar controls cannot cover the resize targets.
+
+Settings → Two-column toolbar in smaller windows is enabled by default. When the single column would need scrolling, tools arrange into two columns. Disable this setting to retain one column; the minimum window height increases to fit it, subject to the monitor working area.
+
+Hand (Y) pans the canvas with a left-button drag. The middle mouse button still pans with other tools. Panning moves only the view and does not alter image content or undo history. Existing custom Y bindings are preserved; assign Hand a different letter in Settings if necessary.
+
+
+## Windows installer
+
+ShotOut-Setup-v1.3.4.exe bundles the application and requires no package downloads on Windows 10/11. Open it and click Install & launch. It installs for your Windows account in %LOCALAPPDATA%\Programs\ShotOut, creates a Start-menu shortcut and an optional desktop shortcut, registers ShotOut in Windows Installed apps, and opens the application. Administrator privileges are not required. Exit any running ShotOut from its tray menu before installing or updating.
+
+If Windows startup was already enabled, setup points it at the installed executable. Otherwise startup stays off; it can be enabled in ShotOut Settings. Uninstall through Windows Settings → Apps → Installed apps → ShotOut, or run Uninstall.exe in the installation folder. Saved images, projects, preferences, and unknown files are preserved. A temporary cleanup executable may remain in Windows Temp after removal. The installer is unsigned.
+
+Build the app with build.ps1, then build the installer with build-installer.ps1. The installer includes a compressed payload with an integrity check; it does not fetch or execute remote packages.
+
+
 ## Window-frame regression fix
 
 Fixed Windows repainting a native title bar and border over the integrated toolbar when opening or closing a modal dialog, such as text entry. Activation now updates without native frame painting, caption bits are guarded during runtime style changes, and the toolbar repaints when the editor is re-enabled. Regression checks open and apply the real text dialog repeatedly, verify native frame/client bounds, and check maximize/restore afterward.

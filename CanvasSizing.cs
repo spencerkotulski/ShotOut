@@ -6,7 +6,7 @@ using System.Windows.Forms;
 namespace ShotOut {
 partial class Editor {
     Rectangle canvasBase;
-    void TightenTextSelection(Mark mark){
+    void TightenTextSelection(Mark mark){if(quickTextSizing)return;
         int padding=(int)Math.Ceiling(mark.Size/4)+4,width=(int)Math.Ceiling(mark.W),height=(int)Math.Ceiling(mark.H);
         if(width<1||height<1||(long)(width+padding*2)*(height+padding*2)>8000000)return;
         using(var bitmap=new Bitmap(width+padding*2,height+padding*2,System.Drawing.Imaging.PixelFormat.Format32bppArgb)){
@@ -27,10 +27,10 @@ partial class Editor {
     public void VerifySizingUpdate(List<string> report,string folder){
         Action<bool,string> check=delegate(bool ok,string label){if(!ok)throw new Exception(label);report.Add("PASS "+label);};
         foreach(string kind in new[]{"Text","Balloon"})foreach(bool rich in new[]{false,true}){
-            LoadBitmap(Blank(400,250),"Tight text");var mark=new Mark {Kind=kind,X=30,Y=30,W=300,H=180,Text="Tight text",Size=20,Color=Color.Black.ToArgb()};if(rich)mark.Runs.Add(new TextRun {Text=mark.Text,Style=1});Marks.Add(mark);Active=mark;SyncStyle();fontSize.Value=100;
+            LoadBitmap(Blank(400,250),"Tight text");var mark=new Mark {Kind=kind,X=30,Y=30,W=300,H=180,Text="Tight text",Size=20,Color=Color.Black.ToArgb()};if(rich)mark.Runs.Add(new TextRun {Text=mark.Text,Style=1});Marks.Add(mark);Active=mark;SyncStyle();fontSize.Value=100;FinishStrokeAdjustment();
             using(var bitmap=new Bitmap(1,1))using(var graphics=Graphics.FromImage(bitmap)){var natural=RichLayout.NaturalSize(graphics,mark);float padding=kind=="Balloon"?20:4;check(mark.W-natural.Width<=padding+3,"Selection closely fits "+kind+" "+(rich?"rich":"plain")+" text at large size");}
             if(kind=="Text")using(var rendered=Art.Render(Background,Marks)){int left=rendered.Width,top=rendered.Height,right=-1,bottom=-1;for(int y=0;y<rendered.Height;y++)for(int x=0;x<rendered.Width;x++){var color=rendered.GetPixel(x,y);if(color.R<180){left=Math.Min(left,x);top=Math.Min(top,y);right=Math.Max(right,x);bottom=Math.Max(bottom,y);}}check(left-mark.X<=5&&top-mark.Y<=5&&mark.Bounds.Right-right<=5&&mark.Bounds.Bottom-bottom<=5,"Selection hugs actual rendered "+(rich?"rich":"plain")+" glyphs on all four sides");}
-            check(Background.Width>400,"Larger tight text expands canvas for "+kind);float largeWidth=mark.W; fontSize.Value=20;
+            check(Background.Width>400,"Larger tight text expands canvas for "+kind);float largeWidth=mark.W; fontSize.Value=20;FinishStrokeAdjustment();
             check(mark.W<largeWidth/3&&Background.Width==400&&Background.Height==250,"Smaller text retracts selection and automatic canvas for "+kind);
             Undo();check(Background.Width>400&&Marks[0].Size==100,"Undo restores enlarged text and canvas");Redo();check(Background.Size==new Size(400,250)&&Marks[0].Size==20,"Redo restores tight smaller text and original canvas");
         }

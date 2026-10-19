@@ -41,12 +41,12 @@ partial class Editor {
         captureSplit.Click+=delegate{Guard(delegate{Capture("Region");});};captureSplit.DropDownClicked+=delegate{Guard(CaptureOptions);};tips.SetToolTip(captureSplit,"Capture region ("+CaptureLabel("Region")+") · Arrow: capture options · Alt+Down opens menu");return captureSplit;
     }
     void InstallIntegratedChrome(Panel header){
-        integratedChrome=true;FormBorderStyle=FormBorderStyle.None;
+        integratedChrome=true;FormBorderStyle=FormBorderStyle.None;Padding=new Padding(7);
         header.MouseDown+=delegate(object sender,MouseEventArgs e){if(e.Button==MouseButtons.Left){ReleaseCapture();SendMessage(Handle,0xA1,new IntPtr(2),IntPtr.Zero);}};
         header.DoubleClick+=delegate{ToggleMaximize();};
         var controls=new FlowLayoutPanel {Dock=DockStyle.Right,Width=132,WrapContents=false,Padding=Padding.Empty};
         foreach(string name in new[]{"Minimize","Maximize","Close"}){string command=name;var button=new CaptionButton {Command=command,Text="",Width=40,Height=36,Margin=new Padding(2,3,2,0),BackColor=header.BackColor,ForeColor=text,AccessibleName=command,TabStop=true};button.Click+=delegate{if(command=="Minimize")WindowState=FormWindowState.Minimized;else if(command=="Close")Close();else ToggleMaximize();};tips.SetToolTip(button,command);controls.Controls.Add(button);if(name=="Maximize")maximizeButton=button;}
-        header.Controls.Add(controls);Resize+=delegate{if(maximizeButton!=null){maximizeButton.Command=WindowState==FormWindowState.Maximized?"Restore":"Maximize";maximizeButton.AccessibleName=maximizeButton.Command;tips.SetToolTip(maximizeButton,maximizeButton.Command);maximizeButton.Invalidate();}};
+        header.Controls.Add(controls);Resize+=delegate{Padding=WindowState==FormWindowState.Maximized?Padding.Empty:new Padding(7);if(maximizeButton!=null){maximizeButton.Command=WindowState==FormWindowState.Maximized?"Restore":"Maximize";maximizeButton.AccessibleName=maximizeButton.Command;tips.SetToolTip(maximizeButton,maximizeButton.Command);maximizeButton.Invalidate();}};
     }
     protected override CreateParams CreateParams {get{var parameters=base.CreateParams;if(integratedChrome){parameters.Style|=0x40000|0x20000|0x10000|0x80000;parameters.Style&=~0xC00000;}return parameters;}}
     [StructLayout(LayoutKind.Sequential)] struct ChromeStyleChange {public int Previous,Next;}
@@ -68,7 +68,7 @@ partial class Editor {
         }
         return false;
     }
-    static bool HasFillOpacity(string kind){return new[]{"Rectangle","Rounded","Ellipse","Balloon","Bucket","Highlight","Step","Redact","Eraser","Spotlight","Cursor"}.Contains(kind);}
+    static bool HasFillOpacity(string kind){return kind=="Grayscale"||new[]{"Rectangle","Rounded","Ellipse","Balloon","Bucket","Highlight","Step","Redact","Eraser","Spotlight","Cursor"}.Contains(kind);}
     void AddFillOpacityInspector(){var row=Row();row.Controls.Add(Caption("Fill opacity · %",145));fillOpacity=Number(0,100,100);fillOpacity.ValueChanged+=delegate{ChangeStyle();};row.Controls.Add(fillOpacity);fillOpacityRow=row;inspector.Controls.Add(row);}
     public void VerifyChromeOpacity(List<string> report,string folder){
         Action<bool,string> check=delegate(bool ok,string label){if(!ok)throw new Exception(label);report.Add("PASS "+label);};

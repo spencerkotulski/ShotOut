@@ -79,7 +79,7 @@ partial class Editor {
     bool EnsureCanvasFitsMarks(){
         if(canvasBase.Width<=0||canvasBase.Height<=0)ResetCanvasBase();
         float left=canvasBase.Left,top=canvasBase.Top,right=canvasBase.Right,bottom=canvasBase.Bottom;
-        foreach(var mark in Marks.Where(m=>m.Visible)){var r=mark.Bounds;left=Math.Min(left,r.Left);top=Math.Min(top,r.Top);right=Math.Max(right,r.Right);bottom=Math.Max(bottom,r.Bottom);}
+        foreach(var mark in Marks.Where(m=>m.Visible&&m.Kind!="Grayscale")){var r=mark.VisibleBounds;if(r.Width<=0||r.Height<=0)continue;left=Math.Min(left,r.Left);top=Math.Min(top,r.Top);right=Math.Max(right,r.Right);bottom=Math.Max(bottom,r.Bottom);}
         int shiftX=-(int)Math.Floor(left),shiftY=-(int)Math.Floor(top);
         return ResizeCanvas((int)Math.Ceiling(right)+shiftX,(int)Math.Ceiling(bottom)+shiftY,shiftX,shiftY);
     }

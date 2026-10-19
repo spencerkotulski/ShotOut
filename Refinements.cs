@@ -10,8 +10,8 @@ partial class Editor {
     readonly HashSet<Mark> Selected=new HashSet<Mark>();
     public RectangleF? Marquee { get; set; }
     bool marqueeDragging;
-    public List<Mark> SelectedObjects() { Selected.RemoveWhere(m=>!Marks.Contains(m)); if(Active!=null&&!Selected.Contains(Active))return new List<Mark>{Active}; return Marks.Where(m=>Selected.Contains(m)).ToList(); }
-    Mark HitObject(PointF p) { float tolerance=5/View.Zoom;return Marks.LastOrDefault(m=>m.Visible&&HitMarkup(m,p,tolerance)); }
+    public List<Mark> SelectedObjects() {Selected.RemoveWhere(m=>!Marks.Contains(m));var chosen=Active!=null&&!Selected.Contains(Active)?new List<Mark>{Active}:Marks.Where(m=>Selected.Contains(m)).ToList();var ids=new HashSet<string>(chosen.Select(m=>m.LinkId).Where(id=>!String.IsNullOrEmpty(id)));return Marks.Where(m=>chosen.Contains(m)||(!String.IsNullOrEmpty(m.LinkId)&&ids.Contains(m.LinkId))).ToList();}
+    Mark HitObject(PointF p) { float tolerance=5/View.Zoom;return Marks.LastOrDefault(m=>m.Visible&&(!m.HasCropClip||m.CropClip.Contains(p))&&HitMarkup(m,p,tolerance)); }
     System.Windows.Forms.Timer previewClock;
     bool previewPending;
     int resizeHandle=-1;
@@ -21,22 +21,23 @@ partial class Editor {
     FlowLayoutPanel tailRow;
     public static PointF[] Handles(RectangleF r) { return new[]{r.Location,new PointF(r.Left+r.Width/2,r.Top),new PointF(r.Right,r.Top),new PointF(r.Right,r.Top+r.Height/2),new PointF(r.Right,r.Bottom),new PointF(r.Left+r.Width/2,r.Bottom),new PointF(r.Left,r.Bottom),new PointF(r.Left,r.Top+r.Height/2)}; }
     int HitHandle(PointF p,RectangleF r) { if(Active==null||!Active.Visible)return -1;if(Active.Kind=="Magnify"){if(Active.MagnifyLinked&&Art.MagnifySource(Active,Background.Size).Contains(p)&&!Active.BodyBounds.Contains(p))return 300;r=Active.BodyBounds;}if(Active.Kind=="Balloon") {if(Active.Tail){var tip=Art.TailPoint(Active);if(Math.Abs(p.X-tip.X)<9/View.Zoom&&Math.Abs(p.Y-tip.Y)<9/View.Zoom)return 200;}r=Active.BodyBounds;} if(Art.IsArrow(Active.Kind)) { var points=ArrowHandles(Active);for(int i=0;i<points.Length;i++)if(Math.Abs(p.X-points[i].X)<8/View.Zoom&&Math.Abs(p.Y-points[i].Y)<8/View.Zoom)return 100+i;return -1; } var handles=Handles(r); float t=8/View.Zoom; for(int i=0;i<handles.Length;i++)if(Math.Abs(p.X-handles[i].X)<t&&Math.Abs(p.Y-handles[i].Y)<t)return i; return -1; }
-    void ResizeActive(PointF p) {
+    void ResizeActive(PointF p) {ResizeActiveWithModifiers(p,ModifierKeys);}
+    void ResizeActiveWithModifiers(PointF p,Keys modifiers) {
         if(resizeHandle==300&&Active.Kind=="Magnify"){Active.SourceX=resizeOriginal.SourceX+p.X-start.X;Active.SourceY=resizeOriginal.SourceY+p.Y-start.Y;Active.SourceInitialized=true;return;}
-        if(resizeHandle==200&&Active.Kind=="Balloon"){var body=resizeOriginal.BodyBounds;Active.TailTipX=(p.X-body.Left)/Math.Max(1,body.Width);Active.TailTipY=(p.Y-body.Top)/Math.Max(1,body.Height);return;}
-        if(Art.IsArrow(resizeOriginal.Kind)&&resizeHandle>=100) { EditArrow(p);return; }
+        if(resizeHandle==200&&Active.Kind=="Balloon"){var body=resizeOriginal.BodyBounds;var local=Art.LocalPoint(resizeOriginal,p);var size=Art.LocalSize(resizeOriginal);Active.TailTipX=local.X/Math.Max(1,size.Width);Active.TailTipY=local.Y/Math.Max(1,size.Height);return;}
+        if(Art.IsArrow(resizeOriginal.Kind)&&resizeHandle>=100) { if((modifiers&Keys.Shift)!=0&&(resizeHandle==100||resizeHandle==101)){var anchor=resizeHandle==100?new PointF(resizeOriginal.X+resizeOriginal.W,resizeOriginal.Y+resizeOriginal.H):new PointF(resizeOriginal.X,resizeOriginal.Y);p=SnapMarkupLine(anchor,p);} EditArrow(p);return; }
         var old=resizeOriginal.Kind=="Balloon"||resizeOriginal.Kind=="Magnify"?resizeOriginal.BodyBounds:resizeOriginal.Bounds; float l=old.Left,t=old.Top,r=old.Right,b=old.Bottom;
         if(resizeHandle==0||resizeHandle==6||resizeHandle==7)l=Math.Min(p.X,r-4);
         if(resizeHandle==0||resizeHandle==1||resizeHandle==2)t=Math.Min(p.Y,b-4);
         if(resizeHandle==2||resizeHandle==3||resizeHandle==4)r=Math.Max(p.X,l+4);
         if(resizeHandle==4||resizeHandle==5||resizeHandle==6)b=Math.Max(p.Y,t+4);
+        if((modifiers&Keys.Shift)!=0&&SquareMarkup(resizeOriginal.Kind)){var square=SquareResize(old,RectangleF.FromLTRB(l,t,r,b),resizeHandle);l=square.Left;t=square.Top;r=square.Right;b=square.Bottom;}
         Active.X=l;Active.Y=t;Active.W=r-l;Active.H=b-t;
         if(resizeOriginal.Points.Count>0)Active.Points=resizeOriginal.Points.Select(q=>new PointF(l+(q.X-old.Left)*(r-l)/Math.Max(1,old.Width),t+(q.Y-old.Top)*(b-t)/Math.Max(1,old.Height))).ToList();
     }
     void QueuePreview() {
-        if((moving||resizing||dragging)&&TryQueueDragFrame())return;
-        if(!moving&&!resizing&&!dragging)EndDragPreview();
-        if(dragging||moving||resizing) {
+        if((moving||resizing||dragging||strokeAdjusting)&&TryQueueDragFrame())return;
+        if(dragging||moving||resizing||strokeAdjusting) {
             previewPending=true;
             if(previewClock==null) { previewClock=new System.Windows.Forms.Timer { Interval=16 }; previewClock.Tick+=delegate { if(previewPending) { previewPending=false; RenderPreview(false); } else previewClock.Stop(); }; Disposed+=delegate { previewClock.Dispose(); }; }
             previewClock.Start(); return;
@@ -45,8 +46,8 @@ partial class Editor {
     }
     void RenderPreview(bool quality) {
         if(welcome!=null&&(fileName!="Untitled"||dirty||Marks.Count>0))SetWelcome(false);
-        var next=Art.Render(Background,Marks,quality); var old=Preview;Preview=next;if(old!=null)old.Dispose();
-        if(!dragging&&!moving&&!resizing) { SyncLayers(); UpdateStatus(); } View.Invalidate();
+        if(!quality||!TryFinishDragPreview()){EndDragPreview();var next=Art.Render(Background,Marks,quality); var old=Preview;Preview=next;if(old!=null)old.Dispose();}
+        if(!dragging&&!moving&&!resizing&&!strokeAdjusting) { TouchRecovery();SyncLayers(); UpdateStatus(); } View.Invalidate();
     }
     static void DrawEye(Graphics g,Rectangle r,bool visible) {var state=g.Save();g.TranslateTransform(r.X,r.Y);g.ScaleTransform(r.Width/20f,r.Height/18f);using(var p=new Pen(Color.FromArgb(151,165,188),1.4f)){g.DrawArc(p,0,2,20,14,10,160);g.DrawArc(p,0,2,20,14,190,160);if(visible)g.DrawEllipse(p,7,6,6,6);else g.DrawLine(p,1,17,19,1);}g.Restore(state);}
     void RenameLayer() { BeginInlineRename(); }
