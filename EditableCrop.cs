@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Drawing2D;
@@ -39,7 +39,7 @@ partial class Editor {
     }
     void StartFullImageCrop(){cropGesture=false;Selected.Clear();cropRatio.SelectedIndex=0;Crop=new RectangleF(PointF.Empty,Background.Size);}
     int CropHit(PointF point){
-        if(!Crop.HasValue)return -1;var handles=Handles(Crop.Value);float tolerance=7/View.Zoom;
+        if(!Crop.HasValue)return -1;var handles=Handles(Crop.Value);float tolerance=ResizeHitPixels/View.Zoom;
         for(int i=0;i<handles.Length;i++)if(Math.Abs(point.X-handles[i].X)<=tolerance&&Math.Abs(point.Y-handles[i].Y)<=tolerance)return i;
         return Crop.Value.Contains(point)?8:-1;
     }
@@ -69,7 +69,7 @@ partial class Editor {
     }
     bool EndCropGesture(){if(!cropGesture)return false;cropGesture=false;View.Capture=false;UpdateStatus("Adjust crop handles or drag inside · Enter / Apply crop to confirm · Esc cancels.");View.Invalidate();return true;}
     public void DrawCropHandles(Graphics graphics){
-        if(tool!="Crop"||!Crop.HasValue)return;float size=7/View.Zoom;using(var pen=new Pen(Color.FromArgb(95,155,255),1/View.Zoom))foreach(var point in Handles(Crop.Value)){var box=new RectangleF(point.X-size/2,point.Y-size/2,size,size);graphics.FillRectangle(Brushes.White,box);graphics.DrawRectangle(pen,box.X,box.Y,box.Width,box.Height);}
+        if(tool!="Crop"||!Crop.HasValue)return;float size=ResizeHandlePixels/View.Zoom;using(var pen=new Pen(Color.FromArgb(95,155,255),1/View.Zoom))foreach(var point in Handles(Crop.Value)){var box=new RectangleF(point.X-size/2,point.Y-size/2,size,size);graphics.FillRectangle(Brushes.White,box);graphics.DrawRectangle(pen,box.X,box.Y,box.Width,box.Height);}
     }
     void ApplyEditableCrop(Rectangle area){
         Push();var next=Background.Clone(area,PixelFormat.Format32bppArgb);Background.Dispose();Background=next;
@@ -80,7 +80,7 @@ partial class Editor {
         Action<bool,string> check=delegate(bool ok,string label){if(!ok)throw new Exception(label);report.Add("PASS "+label);};
         LoadImageDocument(Blank(500,400),"Editable crop");var mark=new Mark {Kind="Rectangle",X=70,Y=80,W=180,H=150,Width=4,Fill=true,FillColor=Color.Red.ToArgb()};Marks.Add(mark);var words=new Mark {Kind="Text",X=120,Y=110,W=140,H=50,Text="Editable",Size=30,Color=Color.Black.ToArgb()};Marks.Add(words);SetTool("Crop");Crop=new RectangleF(100,100,200,200);int count=Marks.Count;CommitCrop();
         check(Background.Size==new Size(200,200)&&Marks.Count==count&&Marks.Contains(words)&&words.Text=="Editable","Crop preserves image layers and editable text and shapes");check(mark.X==-30&&words.X==20,"Crop translates layer coordinates without changing geometry");EnsureCanvasFitsMarks();check(Background.Size==new Size(200,200),"Cropped layer overflow does not automatically undo crop");
-        Active=words;Selected.Clear();Selected.Add(words);SyncStyle();fontSize.Value=500;FinishStrokeAdjustment();check(words.Size==500&&fontSize.Maximum==500,"Text size can reach 500 pixels");Undo();Undo();check(Background.Size==new Size(500,400)&&Marks.Count==count,"Undo restores pre-crop layers and canvas");Redo();check(Background.Size==new Size(200,200),"Redo reapplies editable crop");
+        Active=words;Selected.Clear();Selected.Add(words);SyncStyle();fontSize.Value=500;FinishStrokeAdjustment();check(Math.Abs(words.Size-500*4f/3)<.01&&fontSize.Maximum==500,"Text size can reach 500 points");Undo();Undo();check(Background.Size==new Size(500,400)&&Marks.Count==count,"Undo restores pre-crop layers and canvas");Redo();check(Background.Size==new Size(200,200),"Redo reapplies editable crop");
         var snapshot=Snapshot();using(var stream=new System.IO.MemoryStream()){var xml=new System.Xml.Serialization.XmlSerializer(typeof(Project));xml.Serialize(stream,snapshot);stream.Position=0;Restore((Project)xml.Deserialize(stream));}check(Marks.Any(m=>m.HasCropClip),"Editable crop clipping survives project serialization");
         using(var original=Art.Render(Background,Marks)){ResizeCanvas(300,200,0,0);using(var enlarged=Art.Render(Background,Marks))check(enlarged.GetPixel(230,40).A==0,"Expanding canvas does not reveal cropped image or annotation pixels");}
         LoadBitmap(Blank(500,400),"Crop handles");SetTool("Crop");check(Crop.Value==new RectangleF(0,0,500,400),"Crop starts with the entire image selected");View.Zoom=1;Crop=new RectangleF(100,100,200,180);BeginCropGesture(new PointF(300,190));HandleCropMove(new PointF(350,190));EndCropGesture();check(Crop.Value.Width==250&&Crop.Value.Left==100,"Crop right edge adjusts without redrawing selection");BeginCropGesture(new PointF(180,170));HandleCropMove(new PointF(200,190));EndCropGesture();check(Crop.Value.Left==120&&Crop.Value.Top==120,"Crop region moves by dragging inside");

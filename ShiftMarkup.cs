@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Linq;
@@ -13,7 +13,7 @@ partial class Editor {
         if(handle==1||handle==5)return new RectangleF(original.Left+(original.Width-side)/2,handle==1?original.Bottom-side:original.Top,side,side);
         return new RectangleF(handle==7?original.Right-side:original.Left,original.Top+(original.Height-side)/2,side,side);
     }
-    static Control ToolbarDivider(){return new Panel {Width=1,Height=26,Margin=new Padding(7,6,7,0),BackColor=Color.FromArgb(75,78,88),AccessibleName="Toolbar group separator"};}
+    static Control ToolbarDivider(){return new Panel {Width=1,Height=26,Margin=new Padding(7,8,7,0),BackColor=Color.FromArgb(75,78,88),AccessibleName="Toolbar group separator"};}
     static void StyleTopToolbar(Panel header){header.Paint+=delegate(object sender,PaintEventArgs e){using(var pen=new Pen(Color.FromArgb(66,69,79)))e.Graphics.DrawLine(pen,0,header.Height-2,header.Width,header.Height-2);using(var pen=new Pen(Color.FromArgb(15,16,20)))e.Graphics.DrawLine(pen,0,header.Height-1,header.Width,header.Height-1);};}
     public void VerifyShiftMarkup(List<string> report,string folder){
         Action<bool,string> check=delegate(bool ok,string label){if(!ok)throw new Exception(label);report.Add("PASS "+label);};

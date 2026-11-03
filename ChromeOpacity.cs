@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Linq;
@@ -8,12 +8,11 @@ namespace ShotOut {
 class CaptureSplitButton : ModernButton {
     bool arrowPress;
     public event EventHandler DropDownClicked;
-    protected override void OnMouseDown(MouseEventArgs e){arrowPress=e.Button==MouseButtons.Left&&e.X>=Width-28;base.OnMouseDown(e);}
+    protected override void OnMouseDown(MouseEventArgs e){arrowPress=e.Button==MouseButtons.Left&&e.X>=Width-(int)Math.Round(26*UiScale);base.OnMouseDown(e);}
     protected override void OnMouseUp(MouseEventArgs e){base.OnMouseUp(e);arrowPress=false;}
     protected override void OnClick(EventArgs e){if(arrowPress){arrowPress=false;OpenMenu();}else base.OnClick(e);}
     void OpenMenu(){if(DropDownClicked!=null)DropDownClicked(this,EventArgs.Empty);}
     protected override bool ProcessCmdKey(ref Message message,Keys key){if(key==(Keys.Alt|Keys.Down)||key==Keys.F4){OpenMenu();return true;}return base.ProcessCmdKey(ref message,key);}
-    protected override void OnPaint(PaintEventArgs e){base.OnPaint(e);using(var pen=new Pen(Color.FromArgb(100,115,140),1)){e.Graphics.DrawLine(pen,Width-29,9,Width-29,Height-10);}using(var pen=new Pen(ForeColor,1.6f)){float x=Width-15,y=Height/2f;e.Graphics.DrawLines(pen,new[]{new PointF(x-4,y-2),new PointF(x,y+2),new PointF(x+4,y-2)});}}
     internal void TestClick(bool arrow){arrowPress=arrow;OnClick(EventArgs.Empty);}
 }
 class CaptionButton : ModernButton {
@@ -37,16 +36,16 @@ partial class Editor {
     [DllImport("user32.dll")] static extern IntPtr MonitorFromWindow(IntPtr window,uint flags);
     [DllImport("user32.dll",CharSet=CharSet.Auto)] static extern bool GetMonitorInfo(IntPtr monitor,ref MonitorInformation info);
     Control CreateCaptureSplit(){
-        captureSplit=new CaptureSplitButton {Text="Capture",IconName="Capture",Width=142,Height=36,Margin=new Padding(3),BackColor=Color.FromArgb(36,39,45),ForeColor=text,Cursor=Cursors.Hand,TabStop=true,Font=Font,AccessibleName="Capture region ("+CaptureLabel("Region")+")"};
+        captureSplit=new CaptureSplitButton {Text="Capture",IconName="Capture",Width=ToolbarMenuWidth("Capture"),ShowDropDown=true,Height=36,Margin=new Padding(3),BackColor=Color.FromArgb(36,39,45),ForeColor=text,Cursor=Cursors.Hand,TabStop=true,Font=Font,AccessibleName="Capture region ("+CaptureLabel("Region")+")"};
         captureSplit.Click+=delegate{Guard(delegate{Capture("Region");});};captureSplit.DropDownClicked+=delegate{Guard(CaptureOptions);};tips.SetToolTip(captureSplit,"Capture region ("+CaptureLabel("Region")+") · Arrow: capture options · Alt+Down opens menu");return captureSplit;
     }
     void InstallIntegratedChrome(Panel header){
-        integratedChrome=true;FormBorderStyle=FormBorderStyle.None;Padding=new Padding(7);
+        integratedChrome=true;FormBorderStyle=FormBorderStyle.None;Padding=new Padding(7);BackColor=header.BackColor;
         header.MouseDown+=delegate(object sender,MouseEventArgs e){if(e.Button==MouseButtons.Left){ReleaseCapture();SendMessage(Handle,0xA1,new IntPtr(2),IntPtr.Zero);}};
         header.DoubleClick+=delegate{ToggleMaximize();};
-        var controls=new FlowLayoutPanel {Dock=DockStyle.Right,Width=132,WrapContents=false,Padding=Padding.Empty};
+        var controls=new FlowLayoutPanel {Dock=DockStyle.Right,Width=132,WrapContents=false,Padding=new Padding(0,1,0,0)};
         foreach(string name in new[]{"Minimize","Maximize","Close"}){string command=name;var button=new CaptionButton {Command=command,Text="",Width=40,Height=36,Margin=new Padding(2,3,2,0),BackColor=header.BackColor,ForeColor=text,AccessibleName=command,TabStop=true};button.Click+=delegate{if(command=="Minimize")WindowState=FormWindowState.Minimized;else if(command=="Close")Close();else ToggleMaximize();};tips.SetToolTip(button,command);controls.Controls.Add(button);if(name=="Maximize")maximizeButton=button;}
-        header.Controls.Add(controls);Resize+=delegate{Padding=WindowState==FormWindowState.Maximized?Padding.Empty:new Padding(7);if(maximizeButton!=null){maximizeButton.Command=WindowState==FormWindowState.Maximized?"Restore":"Maximize";maximizeButton.AccessibleName=maximizeButton.Command;tips.SetToolTip(maximizeButton,maximizeButton.Command);maximizeButton.Invalidate();}};
+        header.Controls.Add(controls);Resize+=delegate{var border=WindowState==FormWindowState.Maximized?Padding.Empty:new Padding(7);if(Padding!=border)Padding=border;if(maximizeButton!=null&&maximizeButton.Command!=(WindowState==FormWindowState.Maximized?"Restore":"Maximize")){maximizeButton.Command=WindowState==FormWindowState.Maximized?"Restore":"Maximize";maximizeButton.AccessibleName=maximizeButton.Command;tips.SetToolTip(maximizeButton,maximizeButton.Command);maximizeButton.Invalidate();}};
     }
     protected override CreateParams CreateParams {get{var parameters=base.CreateParams;if(integratedChrome){parameters.Style|=0x40000|0x20000|0x10000|0x80000;parameters.Style&=~0xC00000;}return parameters;}}
     [StructLayout(LayoutKind.Sequential)] struct ChromeStyleChange {public int Previous,Next;}
@@ -55,6 +54,7 @@ partial class Editor {
     void ToggleMaximize(){WindowState=WindowState==FormWindowState.Maximized?FormWindowState.Normal:FormWindowState.Maximized;}
     bool HandleIntegratedChrome(ref Message message){
         if(!integratedChrome)return false;
+        PreventResizePixelCopy(ref message);
         if(message.Msg==0xA&&message.WParam!=IntPtr.Zero)Invalidate(true);
         if(message.Msg==0x83){message.Result=IntPtr.Zero;return true;}
         if(message.Msg==0x85){message.Result=IntPtr.Zero;return true;}

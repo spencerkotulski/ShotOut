@@ -1,19 +1,33 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Windows.Forms;
 namespace ShotOut {
 partial class CaptureOverlay {
+    readonly Timer escapeTimer=new Timer {Interval=25};
+    [System.Runtime.InteropServices.DllImport("user32.dll")] static extern short GetAsyncKeyState(int key);
+    void InstallCaptureCancellation(){
+        Shown+=delegate {Activate();Focus();escapeTimer.Start();};
+        escapeTimer.Tick+=delegate {CheckCaptureEscape((GetAsyncKeyState((int)Keys.Escape)&0x8000)!=0);};
+        FormClosed+=delegate {escapeTimer.Stop();};Disposed+=delegate {escapeTimer.Dispose();};
+    }
+    internal void CheckCaptureEscape(bool pressed){if(pressed&&Visible&&!IsDisposed)CancelCapture();}
+    void CancelCapture(){
+        escapeTimer.Stop();elementTimer.Stop();dragging=false;snapClick=false;freeDrag=false;elementPending=false;
+        Capture=false;Selection=Rectangle.Empty;DialogResult=DialogResult.Cancel;Close();
+    }
+    protected override bool ProcessCmdKey(ref Message message,Keys key){if((key&Keys.KeyCode)==Keys.Escape){CancelCapture();return true;}return base.ProcessCmdKey(ref message,key);}
+    protected override bool ProcessDialogKey(Keys key){if((key&Keys.KeyCode)==Keys.Escape){CancelCapture();return true;}return base.ProcessDialogKey(key);}
     bool smart,snapClick,freeDrag;
     Func<Point,Rectangle> selectionPicker;
     string CaptureHint(){
-        string action=window?"Click a window":smart?"Click a highlighted window or drag a region · Alt: free selection":"Drag a region";
+        string action=window?"Click a window":elements&&!elementFallback?"Hover, then click region · Wheel: expand/shrink · Shift: window · Drag: custom · Alt: free selection":smart?"Click a highlighted window or drag a region · Alt: free selection":"Drag a region";
         return (Selection.IsEmpty?"":Selection.Width+" × "+Selection.Height+" · ")+action+" · Esc: cancel";
     }
     internal void BeginSelection(Point point,bool allowSnap){
         if(window){PickWindow(point);AcceptSelection();return;}
         start=point;dragging=true;freeDrag=false;snapClick=smart&&allowSnap;Capture=true;
-        if(snapClick)PickWindow(point);else Selection=Rectangle.Empty;Invalidate();
+        if(snapClick){PickWindow(point);if(elements)ApplyElementCandidate();}else Selection=Rectangle.Empty;Invalidate();
     }
     internal void MoveSelection(Point point,bool allowSnap){
         if(window){PickWindow(point);Invalidate();return;}
@@ -32,10 +46,14 @@ partial class Editor {
     static void CopyCaptureBitmap(Bitmap image){var data=new DataObject();data.SetData(DataFormats.Bitmap,true,image);Clipboard.SetDataObject(data,true,10,80);}
     string CompleteCapture(Bitmap image,Action<Bitmap> clipboardWriter=null){
         AddDocument(image,"Capture "+(++captureSerial),true,true);
-        ShowCapturePreview();
-        if(!Preferences.Current.AutoCopyCapture)return "Capture added to editor.";
-        try{using(var captured=Art.Render(Background,Marks))(clipboardWriter??CopyCaptureBitmap)(captured);return "Capture copied · Paste with Ctrl+V. Edit here and Copy again for markup.";}
-        catch(Exception){return "Capture saved in editor. Clipboard is unavailable; use Copy image to retry.";}
+        CaptureAudio.Completed();ShowCapturePreview();
+        string result="Capture added to editor.";
+        if(Preferences.Current.AutoCopyCapture){
+            try{using(var captured=Art.Render(Background,Marks))(clipboardWriter??CopyCaptureBitmap)(captured);documentCopied=true;UpdateSaveHint();result="Copied image";}
+            catch(Exception){result="Capture saved in editor. Clipboard is unavailable; use Copy image to retry.";}
+        }
+        string tasks=RunAfterCaptureTasks();
+        return String.IsNullOrEmpty(tasks)?result:result+" "+tasks;
     }
     public void VerifyCaptureConvenience(List<string> report,string folder){
         Action<bool,string> check=delegate(bool ok,string label){if(!ok)throw new Exception(label);report.Add("PASS "+label);};
@@ -44,7 +62,7 @@ partial class Editor {
             Preferences.Current.AutoCopyCapture=true;Preferences.Current.SmartRegion=true;
             var preferences=Preferences.Current.Clone();preferences.AutoCopyCapture=false;preferences.SmartRegion=false;preferences.Save(System.IO.Path.Combine(folder,"capture-options.xml"));var saved=Preferences.Read(System.IO.Path.Combine(folder,"capture-options.xml"));check(!saved.AutoCopyCapture&&!saved.SmartRegion,"Capture clipboard and smart selection settings persist");
             LoadBitmap(Blank(100,100),"Previous capture");int count=DocumentCount,copies=0;var captured=Blank(90,60);captured.SetPixel(4,5,Color.Red);
-            string message=CompleteCapture(captured,delegate(Bitmap bitmap){copies++;check(bitmap.Size==new Size(90,60)&&bitmap.GetPixel(4,5).R==255,"Automatic clipboard receives exact captured pixels");});check(copies==1&&DocumentCount==count+1&&message.Contains("copied"),"Completed capture opens a tab and copies once");
+            string message=CompleteCapture(captured,delegate(Bitmap bitmap){copies++;check(bitmap.Size==new Size(90,60)&&bitmap.GetPixel(4,5).R==255,"Automatic clipboard receives exact captured pixels");});check(copies==1&&DocumentCount==count+1&&message=="Copied image","Completed capture opens a tab and copies once");
             Preferences.Current.AutoCopyCapture=false;CompleteCapture(Blank(70,40),delegate{copies++;});check(copies==1,"Disabling automatic copy leaves clipboard alone");
             Preferences.Current.AutoCopyCapture=true;message=CompleteCapture(Blank(60,30),delegate{throw new System.Runtime.InteropServices.ExternalException("Busy");});check(Background.Width==60&&message.Contains("retry"),"Clipboard failure preserves captured image and permits retry");
             using(var bitmap=Blank(300,200)){

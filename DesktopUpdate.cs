@@ -16,9 +16,10 @@ partial class Editor {
     ContextMenuStrip trayMenu;
     EventWaitHandle activationSignal;
     System.Windows.Forms.Timer activationTimer;
-    void SetWelcome(bool show){welcomeRequested=show;if(welcome!=null)welcome.Visible=show;if(show)RefreshScreenshotBrowser(true);}
-    public void AddWelcomeDocument(){
-        FinishInteraction();StoreDocument();documents.Add(new EditorDocument {Image=Blank(1000,620),Welcome=true,Tool="Select"});
+    void SetWelcome(bool show){bool changed=welcomeRequested!=show;welcomeRequested=show;if(changed)ApplyWorkspaceVisibility();if(show&&screenshotFiles==null)RefreshScreenshotBrowser(true);}
+    public void AddWelcomeDocument(){FinishRecentTabCycle();
+        EnsureTabGallery();
+        FinishInteraction();StoreDocument();documents.Add(new EditorDocument {Image=Blank(1000,620),Welcome=true,Tool="Arrow"});
         currentDocument=documents.Count-1;ReadDocument();FitOnOpen();UpdateStatus();
     }
     void InitializeTray(bool startHidden){
@@ -51,7 +52,7 @@ partial class Editor {
         var bounds=mark.BodyBounds;float horizontal=mark.Kind=="Balloon"?20:4,vertical=mark.Kind=="Balloon"?16+(mark.Tail?14:0):4;
         using(var bitmap=new Bitmap(1,1))using(var graphics=Graphics.FromImage(bitmap)){
             mark.TextInsetLeft=mark.TextInsetRight=mark.TextInsetTop=mark.TextInsetBottom=0;
-            var size=RichLayout.NaturalSize(graphics,mark);
+            var size=RichLayout.NaturalSize(graphics,mark);if(mark.Kind=="Balloon"&&mark.BubbleSized){FitBubbleText(graphics,mark,bounds,size);return;}
             mark.X=bounds.X;mark.Y=bounds.Y;mark.W=(float)Math.Ceiling(size.Width+horizontal+2);mark.H=(float)Math.Ceiling(size.Height+vertical+2);if(mark.Kind=="Text")TightenTextSelection(mark);
         }
     }
@@ -60,7 +61,7 @@ partial class Editor {
         Action<bool,string> check=delegate(bool ok,string label){if(!ok)throw new Exception(label);report.Add("PASS "+label);};
         foreach(string kind in new[]{"Text","Balloon"}){
             LoadBitmap(Blank(500,300),"Text growth");var mark=new Mark {Kind=kind,X=20,Y=20,W=140,H=45,Text="Larger text\nstays visible",Size=16};mark.Runs.Add(new TextRun {Text=mark.Text,Style=1});Marks.Add(mark);Active=mark;SyncStyle();
-            float previousHeight=mark.H;foreach(int size in new[]{24,36,60,100})fontSize.Value=size;FinishStrokeAdjustment();
+            float previousHeight=mark.H;foreach(int size in new[]{24,36,60,100})fontSize.Value=size*.75m;FinishStrokeAdjustment();
             check(mark.W>140&&mark.H>previousHeight&&mark.Size==100,"Rapid font growth expands "+kind+" bounds");check(Background.Width>=mark.Bounds.Right&&Background.Height>=mark.Bounds.Bottom,"Text growth expands canvas when needed for "+kind);
             float savedHeight=mark.H;Undo();check(Marks[0].Size==16&&Marks[0].H<savedHeight,"Undo restores font size and text bounds together for "+kind);
         }
@@ -80,3 +81,4 @@ partial class Editor {
     }
 }
 }
+

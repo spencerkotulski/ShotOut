@@ -28,13 +28,14 @@ partial class Editor {
         var row=Row();row.Controls.Add(Caption("Text alignment",82));
         alignmentChoice=new AlignmentPicker {Width=130,Height=34,BackColor=Color.FromArgb(43,46,54),ForeColor=text,Margin=new Padding(0),Font=Font,AccessibleName="Text alignment"};
         alignmentChoice.SelectedItem="Left";
-        alignmentChoice.SelectedIndexChanged+=delegate {if(syncing)return;alignmentChoiceIndex=alignmentChoice.Items.IndexOf(alignmentChoice.SelectedItem);ChangeStyle();};
+        alignmentChoice.SelectedIndexChanged+=delegate {if(syncing)return;alignmentChoiceIndex=alignmentChoice.Items.IndexOf(alignmentChoice.SelectedItem);RememberTextAlignment();ChangeStyle();};
         row.Controls.Add(alignmentChoice);alignmentRow=row;inspector.Controls.Add(row);
     }
     void ApplyAlignment(Mark mark){if(mark.Kind=="Text"||mark.Kind=="Balloon")mark.TextAlignment=alignmentChoiceIndex;}
     void SyncAlignment(Mark mark){alignmentChoiceIndex=RichLayout.Alignment(mark);alignmentChoice.SelectedItem=new[]{"Left","Center","Right"}[alignmentChoiceIndex];}
     public bool IsCutTool {get{return tool.StartsWith("Cut ");}}
     public void VerifyInteractionPolish(List<string> report,string folder){
+        bool previousTextOptions=Preferences.Current.TextOptionsExpanded;Preferences.Current.TextOptionsExpanded=true;
         Action<bool,string> check=delegate(bool ok,string label){if(!ok)throw new Exception(label);report.Add("PASS "+label);};
         LoadBitmap(Blank(300,220),"Gesture polish");View.Zoom=1;start=new PointF(50,50);cutDirection=0;
         UpdateCutStrip(new PointF(53,51));check(tool=="Cut columns"&&cutDirection==0,"Cut direction remains flexible within first three pixels");
@@ -51,7 +52,7 @@ partial class Editor {
         }
         SetTool("Balloon");var selected=new Mark {Kind="Balloon",X=40,Y=40,W=230,H=140,Text="Centered text",Width=1,Color=Color.RoyalBlue.ToArgb(),Radius=16};Marks.Add(selected);Active=selected;SyncStyle();RefreshImage();Show();Application.DoEvents();
         var picker=(AlignmentPicker)alignmentChoice;check(picker.Controls.Count==3&&((ModernButton)picker.Controls[1]).Selected,"Alignment icons show centered selection");((ModernButton)picker.Controls[2]).PerformClick();check(selected.TextAlignment==2,"Right alignment icon edits bubble with one click");((ModernButton)picker.Controls[1]).PerformClick();
-        using(var preview=new Bitmap(Width,Height)){DrawToBitmap(preview,new Rectangle(Point.Empty,preview.Size));preview.Save(System.IO.Path.Combine(folder,"polished-interface.png"));}Hide();LoadBitmap(Blank(100,100),"Test");
+        using(var preview=new Bitmap(Width,Height)){DrawToBitmap(preview,new Rectangle(Point.Empty,preview.Size));preview.Save(System.IO.Path.Combine(folder,"polished-interface.png"));}Preferences.Current.TextOptionsExpanded=previousTextOptions;Hide();LoadBitmap(Blank(100,100),"Test");
     }
     void UpdateCutStrip(PointF point){
         float dx=point.X-start.X,dy=point.Y-start.Y;
@@ -67,6 +68,7 @@ partial class Editor {
             else {g.DrawLine(pen,0,r.Top,Background.Width,r.Top);g.DrawLine(pen,0,r.Bottom,Background.Width,r.Bottom);}}
     }
     bool ResizeCanvas(int width,int height,int shiftX,int shiftY){
+        if(width<1||height<1){UpdateStatus("Canvas dimensions must be at least 1 pixel.");return false;}
         if(width==Background.Width&&height==Background.Height&&shiftX==0&&shiftY==0)return false;
         if(width>16000||height>16000||(long)width*height>40000000){UpdateStatus("Canvas limit: 16,000 pixels per side and 40 million pixels total.");return false;}
         EndDragPreview();int oldWidth=Background.Width,oldHeight=Background.Height;var expanded=new Bitmap(width,height,PixelFormat.Format32bppArgb);
@@ -113,8 +115,11 @@ partial class Editor {
         Func<int,int,MouseEventArgs> mouse=delegate(int x,int y){var origin=View.Origin;return new MouseEventArgs(MouseButtons.Left,1,(int)origin.X+x,(int)origin.Y+y,0);};
         CanvasDown(mouse(50,40));CanvasMove(mouse(80,42));check(Crop.Value.Top==0&&Crop.Value.Height==140&&Crop.Value.Width==30,"Sideways drag selects full-height cut strip automatically");CanvasUp(mouse(80,42));check(Background.Width==170&&!Crop.HasValue,"Cut columns applies on release");Undo();
         CanvasDown(mouse(50,40));CanvasMove(mouse(52,70));check(Crop.Value.Left==0&&Crop.Value.Width==200&&Crop.Value.Height==30,"Vertical drag selects full-width cut strip automatically");CanvasUp(mouse(52,70));check(Background.Height==110,"Cut rows applies on release without mode toggling");Undo();
-        LoadBitmap(Blank(100,80),"Drag expansion");var movable=new Mark {Kind="Rectangle",X=60,Y=20,W=30,H=30};Marks.Add(movable);SetTool("Select");Active=movable;Selected.Clear();Selected.Add(movable);View.Zoom=1;View.PanX=View.PanY=0;CanvasDown(mouse(70,30));CanvasMove(mouse(150,30));CanvasUp(mouse(150,30));check(Background.Width==170&&movable.X==140,"Dragging beyond canvas edge expands on release without clamping movement");Undo();check(Background.Width==100&&Marks[0].X==60,"One undo restores object movement and canvas expansion");
+        LoadBitmap(Blank(100,80),"Drag expansion");var movable=new Mark {Kind="Rectangle",X=60,Y=20,W=30,H=30};Marks.Add(movable);SetTool("Select");Active=movable;Selected.Clear();Selected.Add(movable);View.Zoom=1;View.PanX=View.PanY=0;CanvasDown(mouse(75,35));CanvasMove(mouse(155,35));CanvasUp(mouse(155,35));check(Background.Width==170&&movable.X==140,"Dragging beyond canvas edge expands on release without clamping movement (width="+Background.Width+", x="+movable.X+")");Undo();check(Background.Width==100&&Marks[0].X==60,"One undo restores object movement and canvas expansion");
         SetTool("Text");check(alignmentChoice.SelectedItem=="Left","New text tool defaults to left alignment");LoadBitmap(Blank(100,100),"Test");
     }
 }
 }
+
+
+

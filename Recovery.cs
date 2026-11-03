@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
@@ -12,7 +12,7 @@ using System.Xml;
 using System.Xml.Serialization;
 namespace ShotOut {
 public class RecoveryLayer {public Mark Data;public string Image;}
-public class RecoveryTab {public string Name,Background;public Rectangle CanvasBase;public bool Selected;public List<RecoveryLayer> Layers=new List<RecoveryLayer>();}
+public class RecoveryTab {public string Name,Background,ImagePath,ProjectPath;public DateTime CreatedUtc=DateTime.UtcNow;public Rectangle CanvasBase;public bool Selected;public List<RecoveryLayer> Layers=new List<RecoveryLayer>();}
 public class RecoveryManifest {public int Version=1;public List<RecoveryTab> Tabs=new List<RecoveryTab>();}
 sealed class RecoveryBlob {public string Hash;}
 sealed class PendingRecoveryTab : IDisposable {public RecoveryTab Data;public Bitmap Background;public RecoveryBlob Cache;public List<byte[]> Images=new List<byte[]>();public void Dispose(){if(Background!=null)Background.Dispose();}}
@@ -24,7 +24,7 @@ sealed class RecoveryStore {
     readonly ConditionalWeakTable<byte[],RecoveryBlob> images=new ConditionalWeakTable<byte[],RecoveryBlob>();
     public RecoveryStore(string parent){Directory.CreateDirectory(parent);Root=Path.Combine(Path.GetFullPath(parent),"session-"+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(Root);lease=new FileStream(Path.Combine(Root,"active.lock"),FileMode.OpenOrCreate,FileAccess.ReadWrite,FileShare.None);}
     internal PendingRecoveryTab Capture(EditorDocument document,bool selected){
-        RecoveryBlob cached=backgrounds.GetValue(document.Image,key=>new RecoveryBlob());var tab=new PendingRecoveryTab {Data=new RecoveryTab {Name=document.Name,CanvasBase=document.CanvasBase,Selected=selected},Cache=cached};
+        RecoveryBlob cached=backgrounds.GetValue(document.Image,key=>new RecoveryBlob());var tab=new PendingRecoveryTab {Data=new RecoveryTab {Name=document.Name,ImagePath=document.ImagePath,ProjectPath=document.ProjectPath,CreatedUtc=document.CreatedUtc,CanvasBase=document.CanvasBase,Selected=selected},Cache=cached};
         if(cached.Hash==null||!File.Exists(Path.Combine(Root,cached.Hash+".png")))tab.Background=(Bitmap)document.Image.Clone();else tab.Data.Background=cached.Hash;
         try{foreach(var mark in document.Marks){var copy=mark.Clone();tab.Images.Add(copy.Image);copy.Image=null;tab.Data.Layers.Add(new RecoveryLayer {Data=copy});}return tab;}catch{tab.Dispose();throw;}
     }
@@ -59,13 +59,13 @@ partial class Editor {
     void InitializeRecovery(){InitializeRecoveryCore(RecoveryFolder,false);}
     void InitializeRecoveryCore(string folder,bool test){
         if((Preferences.Testing&&!test)||!Preferences.Current.AutoRecover||recoveryStore!=null)return;
-        try{recoveryStore=new RecoveryStore(folder);int skipped;recoveredSessions=RecoveryStore.Find(folder,recoveryStore.Root,out skipped);int restored=0,selected=-1;foreach(var session in recoveredSessions)foreach(var pair in session.Tabs){var tab=pair.Item1;var project=pair.Item2;AddDocument(Art.FromBytes(project.Background),"Recovered · "+tab.Name,true);ReadCanvasBase(project.CanvasBase);Marks=project.Marks;dirty=true;step=Marks.Count(mark=>mark.Kind=="Step")+1;if(tab.Selected)selected=currentDocument;RefreshImage();StoreDocument();restored++;}if(selected>=0)ActivateDocument(selected);if(restored>0){captureSerial=Math.Max(captureSerial,documents.Count);UpdateStatus("Recovered "+restored+" unsaved tabs.");}if(skipped>0)UpdateStatus("Some recovery files could not be opened; they were kept for a future retry.");
+        try{recoveryStore=new RecoveryStore(folder);int skipped;recoveredSessions=RecoveryStore.Find(folder,recoveryStore.Root,out skipped);int restored=0,selected=-1;foreach(var session in recoveredSessions)foreach(var pair in session.Tabs){var tab=pair.Item1;var project=pair.Item2;AddDocument(Art.FromBytes(project.Background),"Recovered · "+tab.Name,true);ReadCanvasBase(project.CanvasBase);imageSavePath=tab.ImagePath;projectSavePath=tab.ProjectPath;documentCreatedUtc=tab.CreatedUtc;Marks=project.Marks;dirty=true;step=Marks.Count(mark=>mark.Kind=="Step")+1;if(tab.Selected)selected=currentDocument;RefreshImage();StoreDocument();restored++;}if(selected>=0)ActivateDocument(selected);if(restored>0){captureSerial=Math.Max(captureSerial,documents.Count);UpdateStatus("Recovered "+restored+" unsaved tabs.");}if(skipped>0)UpdateStatus("Some recovery files could not be opened; they were kept for a future retry.");
             recoveryTimer=new Timer {Interval=3000};recoveryTimer.Tick+=delegate{QueueRecovery();};recoveryTimer.Start();Disposed+=delegate{FinishRecovery(false);};TouchRecovery();
         }catch(Exception ex){UpdateStatus("Recovery could not start: "+ex.Message);FinishRecovery(false);}
     }
     void ReleaseRecovered(bool remove){foreach(var session in recoveredSessions){if(remove)try{RecoveryStore.MarkClean(session.Root);}catch(IOException){}catch(UnauthorizedAccessException){}session.Dispose();if(remove)try{RecoveryStore.DeleteSession(session.Root);}catch(IOException){}catch(UnauthorizedAccessException){}}recoveredSessions.Clear();}
     void QueueRecovery(){
-        if(recoveryStore==null||clonePainting||strokeAdjusting||moving||resizing||dragging||cropGesture||panning||marqueeDragging)return;
+        if(recoveryStore==null||inlineTarget!=null||clonePainting||strokeAdjusting||moving||resizing||dragging||cropGesture||panning||marqueeDragging)return;
         if(recoveryWrite!=null){if(!recoveryWrite.IsCompleted)return;if(recoveryWrite.IsFaulted){UpdateStatus("Autosave could not finish. Your open tabs are still available; recovery will retry.");recoverySavedRevision=-1;var ignored=recoveryWrite.Exception;}else ReleaseRecovered(true);recoveryWrite=null;}
         if(recoveryRevision==recoverySavedRevision||DateTime.UtcNow-recoveryTouched<TimeSpan.FromSeconds(1.5)||DateTime.UtcNow-recoveryLastSaved<TimeSpan.FromSeconds(15))return;
         var pending=new List<PendingRecoveryTab>();try{StoreDocument();foreach(var document in documents)if(document.Dirty&&!document.Welcome)pending.Add(recoveryStore.Capture(document,Object.ReferenceEquals(document,documents[currentDocument])));var store=recoveryStore;recoverySavedRevision=recoveryRevision;recoveryLastSaved=DateTime.UtcNow;recoveryWrite=Task.Factory.StartNew(delegate{store.Write(pending);});}catch{foreach(var tab in pending)tab.Dispose();UpdateStatus("Autosave could not start; it will retry.");}

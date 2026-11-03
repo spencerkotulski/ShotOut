@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Drawing2D;
@@ -12,6 +12,7 @@ partial class Editor {
     bool marqueeDragging;
     public List<Mark> SelectedObjects() {Selected.RemoveWhere(m=>!Marks.Contains(m));var chosen=Active!=null&&!Selected.Contains(Active)?new List<Mark>{Active}:Marks.Where(m=>Selected.Contains(m)).ToList();var ids=new HashSet<string>(chosen.Select(m=>m.LinkId).Where(id=>!String.IsNullOrEmpty(id)));return Marks.Where(m=>chosen.Contains(m)||(!String.IsNullOrEmpty(m.LinkId)&&ids.Contains(m.LinkId))).ToList();}
     Mark HitObject(PointF p) { float tolerance=5/View.Zoom;return Marks.LastOrDefault(m=>m.Visible&&(!m.HasCropClip||m.CropClip.Contains(p))&&HitMarkup(m,p,tolerance)); }
+    bool ImageInteractionLocked(Mark mark){return ImageMovementIsLocked(mark)||(mark!=null&&mark.Kind=="Image"&&tool!="Select")||(mark!=null&&mark.IsPresentation&&(tool!="Select"||Active!=mark||!Selected.Contains(mark)));}
     System.Windows.Forms.Timer previewClock;
     bool previewPending;
     int resizeHandle=-1;
@@ -20,7 +21,7 @@ partial class Editor {
     CheckBox tailBox;
     FlowLayoutPanel tailRow;
     public static PointF[] Handles(RectangleF r) { return new[]{r.Location,new PointF(r.Left+r.Width/2,r.Top),new PointF(r.Right,r.Top),new PointF(r.Right,r.Top+r.Height/2),new PointF(r.Right,r.Bottom),new PointF(r.Left+r.Width/2,r.Bottom),new PointF(r.Left,r.Bottom),new PointF(r.Left,r.Top+r.Height/2)}; }
-    int HitHandle(PointF p,RectangleF r) { if(Active==null||!Active.Visible)return -1;if(Active.Kind=="Magnify"){if(Active.MagnifyLinked&&Art.MagnifySource(Active,Background.Size).Contains(p)&&!Active.BodyBounds.Contains(p))return 300;r=Active.BodyBounds;}if(Active.Kind=="Balloon") {if(Active.Tail){var tip=Art.TailPoint(Active);if(Math.Abs(p.X-tip.X)<9/View.Zoom&&Math.Abs(p.Y-tip.Y)<9/View.Zoom)return 200;}r=Active.BodyBounds;} if(Art.IsArrow(Active.Kind)) { var points=ArrowHandles(Active);for(int i=0;i<points.Length;i++)if(Math.Abs(p.X-points[i].X)<8/View.Zoom&&Math.Abs(p.Y-points[i].Y)<8/View.Zoom)return 100+i;return -1; } var handles=Handles(r); float t=8/View.Zoom; for(int i=0;i<handles.Length;i++)if(Math.Abs(p.X-handles[i].X)<t&&Math.Abs(p.Y-handles[i].Y)<t)return i; return -1; }
+    int HitHandle(PointF p,RectangleF r) { if(Active==null||!Active.Visible)return -1;if(Active.Kind=="Magnify"){if(Active.MagnifyLinked&&Art.MagnifySource(Active,Background.Size).Contains(p)&&!Active.BodyBounds.Contains(p))return 300;r=Active.BodyBounds;}if(Active.Kind=="Balloon") {if(Active.Tail){var tip=Art.TailPoint(Active);if(Math.Abs(p.X-tip.X)<11/View.Zoom&&Math.Abs(p.Y-tip.Y)<11/View.Zoom)return 200;}r=Active.BodyBounds;} if(Art.IsArrow(Active.Kind)) { var points=ArrowHandles(Active);for(int i=0;i<points.Length;i++)if(Math.Abs(p.X-points[i].X)<ResizeHitPixels/View.Zoom&&Math.Abs(p.Y-points[i].Y)<ResizeHitPixels/View.Zoom)return 100+i;return -1; } var handles=Handles(r); float t=ResizeHitPixels/View.Zoom; for(int i=0;i<handles.Length;i++)if(Math.Abs(p.X-handles[i].X)<t&&Math.Abs(p.Y-handles[i].Y)<t)return i; return -1; }
     void ResizeActive(PointF p) {ResizeActiveWithModifiers(p,ModifierKeys);}
     void ResizeActiveWithModifiers(PointF p,Keys modifiers) {
         if(resizeHandle==300&&Active.Kind=="Magnify"){Active.SourceX=resizeOriginal.SourceX+p.X-start.X;Active.SourceY=resizeOriginal.SourceY+p.Y-start.Y;Active.SourceInitialized=true;return;}
@@ -44,10 +45,10 @@ partial class Editor {
         }
         previewPending=false; if(previewClock!=null)previewClock.Stop(); RenderPreview(true);
     }
-    void RenderPreview(bool quality) {
+    void RenderPreview(bool quality) {using(new Art.ImageComparison(imageComparisonId))RenderPreviewCore(quality);} void RenderPreviewCore(bool quality) {
         if(welcome!=null&&(fileName!="Untitled"||dirty||Marks.Count>0))SetWelcome(false);
-        if(!quality||!TryFinishDragPreview()){EndDragPreview();var next=Art.Render(Background,Marks,quality); var old=Preview;Preview=next;if(old!=null)old.Dispose();}
-        if(!dragging&&!moving&&!resizing&&!strokeAdjusting) { TouchRecovery();SyncLayers(); UpdateStatus(); } View.Invalidate();
+        if(!quality||!TryFinishDragPreview()){EndDragPreview();var next=Art.Render(Background,inlineTarget==null?Marks:Marks.Select(InlinePreviewMark).ToList(),quality); var old=Preview;Preview=next;ReleaseDocumentPreview(old);}
+        if(zoneAdjustmentMode&&imageAdjustmentTarget!=null&&selectedImageZone!=null)zonePreviewBounds=Art.ZoneDocumentBounds(imageAdjustmentTarget,selectedImageZone);if(!dragging&&!moving&&!resizing&&!strokeAdjusting) { TouchRecovery();SyncLayers(); UpdateStatus(); } View.Invalidate();
     }
     static void DrawEye(Graphics g,Rectangle r,bool visible) {var state=g.Save();g.TranslateTransform(r.X,r.Y);g.ScaleTransform(r.Width/20f,r.Height/18f);using(var p=new Pen(Color.FromArgb(151,165,188),1.4f)){g.DrawArc(p,0,2,20,14,10,160);g.DrawArc(p,0,2,20,14,190,160);if(visible)g.DrawEllipse(p,7,6,6,6);else g.DrawLine(p,1,17,19,1);}g.Restore(state);}
     void RenameLayer() { BeginInlineRename(); }
@@ -123,18 +124,19 @@ class Spectrum : Control {
     protected override void OnMouseMove(MouseEventArgs e) { if(hueDrag||svDrag)UpdateAt(e.Location); }
     protected override void OnMouseUp(MouseEventArgs e) { hueDrag=svDrag=false;Capture=false; }
 }
-class PaletteDialog : Form {
+partial class PaletteDialog : Form {
     public Color Chosen { get; set; }
     public PaletteDialog(Color initial) {
-        Chosen=initial;Text="Choose color";ClientSize=new Size(356,388);BackColor=Color.FromArgb(30,32,38);ForeColor=Color.FromArgb(233,236,243);Font=new Font("Segoe UI",13,FontStyle.Regular,GraphicsUnit.Pixel);FormBorderStyle=FormBorderStyle.FixedDialog;MaximizeBox=MinimizeBox=false;StartPosition=FormStartPosition.CenterParent;
-        var spectrum=new Spectrum(initial){Location=new Point(20,18)};Controls.Add(spectrum);
+        Chosen=initial;Text="Choose color";ClientSize=new Size(356,538);BackColor=Color.FromArgb(30,32,38);ForeColor=Color.FromArgb(233,236,243);Font=new Font("Segoe UI",13,FontStyle.Regular,GraphicsUnit.Pixel);FormBorderStyle=FormBorderStyle.FixedDialog;MaximizeBox=MinimizeBox=false;StartPosition=FormStartPosition.CenterParent;
+        spectrum=new Spectrum(initial){Location=new Point(20,18)};Controls.Add(spectrum);
         var palette=new FlowLayoutPanel{Location=new Point(17,235),Size=new Size(324,38)};
         foreach(var color in new[]{Color.FromArgb(255,100,100),Color.FromArgb(255,185,70),Color.FromArgb(255,220,60),Color.FromArgb(65,200,148),Color.FromArgb(90,150,255),Color.FromArgb(177,130,255),Color.White,Color.Black}) { Color c=color;var b=new ModernButton{Swatch=true,BackColor=c,Size=new Size(34,32),Margin=new Padding(3),AccessibleName=c.Name};b.Click+=delegate{Chosen=c;spectrum.Hue=c.GetHue();spectrum.Value=Math.Max(c.R,Math.Max(c.G,c.B))/255d;spectrum.Saturation=spectrum.Value==0?0:1-Math.Min(c.R,Math.Min(c.G,c.B))/(spectrum.Value*255);spectrum.Invalidate();UpdateHex();};palette.Controls.Add(b); }Controls.Add(palette);
-        hex=new TextBox{Location=new Point(20,284),Width=192,BackColor=Color.FromArgb(43,46,54),ForeColor=ForeColor,BorderStyle=BorderStyle.FixedSingle,Font=Font};Controls.Add(hex);swatch=new Panel{Location=new Point(228,282),Size=new Size(108,29)};Controls.Add(swatch);UpdateHex();spectrum.Changed+=delegate{Chosen=spectrum.Selected;UpdateHex();};
-        var apply=new ModernButton{Text="Apply color",Location=new Point(182,334),Size=new Size(154,36),BackColor=Color.FromArgb(84,119,239),ForeColor=ForeColor,Font=Font};apply.Click+=delegate { int rgb;string value=hex.Text.Trim().TrimStart('#');if(value.Length!=6||!int.TryParse(value,NumberStyles.HexNumber,CultureInfo.InvariantCulture,out rgb)){hex.Focus();hex.SelectAll();return;}Chosen=Color.FromArgb(255,(rgb>>16)&255,(rgb>>8)&255,rgb&255);DialogResult=DialogResult.OK;Close();};Controls.Add(apply);
-        var cancel=new ModernButton{Text="Cancel",Location=new Point(20,334),Size=new Size(148,36),BackColor=Color.FromArgb(43,46,54),ForeColor=ForeColor,Font=Font,DialogResult=DialogResult.Cancel};Controls.Add(cancel);AcceptButton=apply;CancelButton=cancel;
+        hex=new ThemedTextBox{Location=new Point(20,284),Width=192,BackColor=Color.FromArgb(43,46,54),ForeColor=ForeColor,BorderStyle=BorderStyle.FixedSingle,Font=Font};Controls.Add(hex);ModernMenus.TextMenu(hex);swatch=new Panel{Location=new Point(228,282),Size=new Size(108,29)};Controls.Add(swatch);UpdateHex();spectrum.Changed+=delegate{Chosen=spectrum.Selected;UpdateHex();};
+        var apply=new ModernButton{Text="Apply color",Location=new Point(182,490),Size=new Size(154,36),BackColor=UiTheme.Accent,ForeColor=ForeColor,Font=Font};apply.Click+=delegate { int rgb;string value=hex.Text.Trim().TrimStart('#');if(value.Length!=6||!int.TryParse(value,NumberStyles.HexNumber,CultureInfo.InvariantCulture,out rgb)){hex.Focus();hex.SelectAll();return;}Chosen=Color.FromArgb(255,(rgb>>16)&255,(rgb>>8)&255,rgb&255);DialogResult=DialogResult.OK;Close();};Controls.Add(apply);
+        var cancel=new ModernButton{Text="Cancel",Location=new Point(20,490),Size=new Size(148,36),BackColor=Color.FromArgb(43,46,54),ForeColor=ForeColor,Font=Font,DialogResult=DialogResult.Cancel};Controls.Add(cancel);AcceptButton=apply;CancelButton=cancel;AddColorTools();AddOpacityControls();AddRecentColorTools();
     }
     TextBox hex;Panel swatch;
     void UpdateHex(){if(hex==null)return;hex.Text="#"+(Chosen.ToArgb()&0xffffff).ToString("X6");swatch.BackColor=Chosen;}
 }
 }
+

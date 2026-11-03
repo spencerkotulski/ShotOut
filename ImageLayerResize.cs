@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Imaging;
@@ -7,9 +7,9 @@ using System.Windows.Forms;
 namespace ShotOut {
 partial class Editor {
     void PromoteImageLayer(){
-        var original=Background;var layer=new Mark {Kind="Image",Name="Screenshot",IsCaptureBase=true,X=0,Y=0,W=original.Width,H=original.Height,Image=Art.Bytes(original),Width=0};
+        var original=Background;var layer=new Mark {Kind="Image",Name="Screenshot",IsCaptureBase=true,ImageMovementLocked=true,X=0,Y=0,W=original.Width,H=original.Height,Image=Art.Bytes(original),Width=0};
         Background=new Bitmap(original.Width,original.Height,PixelFormat.Format32bppArgb);original.Dispose();
-        Marks.Insert(0,layer);Active=null;Selected.Clear();RefreshImage();
+        Marks.Insert(0,layer);Active=null;Selected.Clear();if(!Preferences.Testing)WarmSnapshotImageBytes();RefreshImage();
     }
     void LoadImageDocument(Bitmap image,string name){LoadBitmap(image,name);PromoteImageLayer();}
     Bitmap OriginalImageCopy(){var image=Marks.FirstOrDefault(mark=>mark.IsCaptureBase&&mark.Image!=null);return image==null?new Bitmap(Background):Art.FromBytes(image.Image);}
@@ -38,3 +38,4 @@ partial class Editor {
     }
 }
 }
+

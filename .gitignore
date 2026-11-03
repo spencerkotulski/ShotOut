@@ -1,0 +1,5 @@
+ShotOut.exe
+ShotOut-Setup-*.exe
+setup-build/
+__pycache__/
+*.pyc

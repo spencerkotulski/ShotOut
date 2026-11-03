@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
@@ -11,16 +11,16 @@ partial class Editor {
     byte[] snapshotBytes;
     List<Mark> dragScene,dragMutable;
     int dragFirst;
-    Rectangle dragPreviousBounds;
+    Rectangle dragPreviousBounds,dragTouchedBounds;
     bool dragFramePending;
-    byte[] SnapshotImageBytes(){if(snapshotBytes==null||!Object.ReferenceEquals(snapshotBitmap,Background)){snapshotBytes=Art.Bytes(Background);snapshotBitmap=Background;}return snapshotBytes;}
+    byte[] SnapshotImageBytes(){if(snapshotBytes==null||!Object.ReferenceEquals(snapshotBitmap,Background)){snapshotBytes=PreparedSnapshotBytes()??Art.Bytes(Background);snapshotBitmap=Background;}return snapshotBytes;}
     static Rectangle UnionBounds(Rectangle a,Rectangle b){if(a.IsEmpty)return b;if(b.IsEmpty)return a;return Rectangle.Union(a,b);}
     Rectangle MutableBounds(){var r=Rectangle.Empty;foreach(var m in dragMutable)if(m.Visible)r=UnionBounds(r,Art.DrawingBounds(m,Background.Size));return r;}
     void StartDragPreview(){
-        EndDragPreview();if(!(moving||resizing||dragging||strokeAdjusting)||Preview==null)return;
-        dragMutable=strokeAdjusting?new List<Mark>{Active}:draft!=null?new List<Mark>{draft}:SelectedObjects();if(dragMutable.Count==0)return;
+        EndDragPreview();if(!(moving||resizing||dragging||strokeAdjusting||inlineTarget!=null)||Preview==null)return;
+        dragMutable=inlineTarget!=null?new List<Mark>{inlineTarget}:strokeAdjusting?(geometryAdjusting?geometryTargets:circleSizeAdjusting?circleSizeTargets:new List<Mark>{Active}):draft!=null?new List<Mark>{draft}:SelectedObjects();if(dragMutable.Count==0)return;
         dragFirst=Marks.FindIndex(m=>dragMutable.Contains(m));if(dragFirst<0)return;
-        dragBackground=Background;dragScene=Marks.ToList();dragBase=BuildInteractionBase();dragPreviousBounds=MutableBounds();
+        dragBackground=Background;dragScene=Marks.ToList();dragBase=BuildInteractionBase();dragPreviousBounds=MutableBounds();dragTouchedBounds=dragPreviousBounds;
         if(previewClock!=null)previewClock.Stop();
     }
     bool TryQueueDragFrame(){
@@ -31,12 +31,13 @@ partial class Editor {
         if(dirty.IsEmpty)return;var origin=View.Origin;int pad=45;var rect=Rectangle.FromLTRB((int)Math.Floor(origin.X+dirty.Left*View.Zoom)-pad,(int)Math.Floor(origin.Y+dirty.Top*View.Zoom)-pad,(int)Math.Ceiling(origin.X+dirty.Right*View.Zoom)+pad,(int)Math.Ceiling(origin.Y+dirty.Bottom*View.Zoom)+pad);View.Invalidate(rect);
     }
     public void PrepareDragFrame(){
+        FlushInlineUpdate();
         if(!dragFramePending||dragBase==null)return;dragFramePending=false;
         if(dragScene.Count!=Marks.Count||!dragScene.SequenceEqual(Marks)){EndDragPreview();RenderPreview(false);return;}
         var current=MutableBounds();var dirty=UnionBounds(dragPreviousBounds,current);if(dirty.IsEmpty)return;
-        dirty=ExpandDragDirty(dirty);
-        using(var g=Graphics.FromImage(Preview)){g.CompositingMode=CompositingMode.SourceCopy;g.InterpolationMode=InterpolationMode.NearestNeighbor;g.PixelOffsetMode=PixelOffsetMode.Half;g.DrawImage(dragBase,dirty,dirty,GraphicsUnit.Pixel);}
-        for(int i=dragFirst;i<Marks.Count;i++)if(Marks[i].Visible)Art.Draw(Preview,Marks[i],false,dirty);
+        dirty=ExpandDragDirty(dirty);dragTouchedBounds=UnionBounds(dragTouchedBounds,dirty);
+        Art.CopyPixelRegion(dragBase,Preview,dirty);
+        for(int i=dragFirst;i<Marks.Count;i++)if(Marks[i].Visible)Art.Draw(Preview,InlinePreviewMark(Marks[i]),false,dirty);
         dragPreviousBounds=current;
     }
     Rectangle ExpandDragDirty(Rectangle dirty) {
@@ -44,7 +45,7 @@ partial class Editor {
         for(int pass=0;pass<Marks.Count-dragFirst;pass++){var previous=dirty;for(int i=dragFirst;i<Marks.Count;i++){var m=Marks[i];if(!m.Visible||!(m.Kind=="Blur"||m.Kind=="Pixelate"||m.Kind=="Magnify"||m.Kind=="Spotlight"))continue;var bounds=Art.DrawingBounds(m,Background.Size);if(bounds.IntersectsWith(dirty))dirty=UnionBounds(dirty,bounds);}if(dirty==previous)break;}
         return dirty;
     }
-    void EndDragPreview(){dragFramePending=false;if(dragBase!=null){dragBase.Dispose();dragBase=null;}dragBackground=null;dragScene=null;dragMutable=null;}
+    void EndDragPreview(){if(View!=null)View.ClearInteractionDisplayCache();dragTouchedBounds=Rectangle.Empty;dragFramePending=false;if(dragBase!=null){dragBase.Dispose();dragBase=null;}dragBackground=null;dragScene=null;dragMutable=null;}
     public void VerifyDragPerformance(List<string> report,string folder){
         Action<bool,string> check=delegate(bool ok,string label){if(!ok)throw new Exception(label);report.Add("PASS "+label);};
         LoadBitmap(Blank(3840,2160),"4K drag benchmark");
@@ -68,3 +69,4 @@ partial class Editor {
     }
 }
 }
+

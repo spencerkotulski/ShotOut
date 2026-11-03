@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Linq;
@@ -7,7 +7,8 @@ using System.Windows.Forms;
 namespace ShotOut {
 partial class Editor {
     FlowLayoutPanel toolRail;
-    bool rearrangingTools;
+    bool rearrangingTools;string toolRailLayoutKey;internal int ToolboxLayoutPasses;
+    int ToolPixels(int pixels){return Math.Max(1,(int)Math.Round(pixels*ToolbarScale*1.15f));}
     [DllImport("user32.dll")] static extern IntPtr ChildWindowFromPointEx(IntPtr parent,Point point,uint flags);
     int SingleColumnHeight(){return toolRail==null?700:toolRail.Padding.Vertical+toolRail.Controls.Cast<Control>().Sum(control=>control.Height+control.Margin.Vertical);}
     void WireToolRail(){toolRail.ClientSizeChanged+=delegate{ReflowToolbar();};ReflowToolbar();}
@@ -18,10 +19,11 @@ partial class Editor {
     void ReflowToolbar(){
         if(toolRail==null||rearrangingTools)return;rearrangingTools=true;
         try{
-            bool two=Preferences.Current.AdaptiveToolbar&&toolRail.ClientSize.Height<SingleColumnHeight();
-            toolRail.SuspendLayout();toolRail.AutoScroll=false;toolRail.AutoScrollPosition=Point.Empty;toolRail.FlowDirection=two?FlowDirection.LeftToRight:FlowDirection.TopDown;toolRail.WrapContents=two;toolRail.Width=two?110:68;
-            foreach(Control control in toolRail.Controls){bool separator=(string)control.Tag=="separator";if(separator){control.Width=two?84:29;control.Margin=two?new Padding(0,8,0,8):new Padding(7,8,0,8);}else control.Margin=two?new Padding(0,1,4,1):new Padding(0,1,0,1);toolRail.SetFlowBreak(control,two&&(separator||(string)control.Tag=="group-end"));}
-            toolRail.AutoScroll=!two&&toolRail.ClientSize.Height<SingleColumnHeight();toolRail.ResumeLayout(true);
+            bool labels=Preferences.Current.ShowToolLabels;bool two=!labels&&Preferences.Current.AdaptiveToolbar&&toolRail.ClientSize.Height<SingleColumnHeight();
+            string key=labels+"/"+two+"/"+ToolbarScale+"/"+toolRail.Controls.Count+"/"+(toolRail.ClientSize.Height<SingleColumnHeight());if(key==toolRailLayoutKey)return;toolRailLayoutKey=key;ToolboxLayoutPasses++;
+            toolRail.SuspendLayout();toolRail.AutoScroll=false;toolRail.AutoScrollPosition=Point.Empty;toolRail.FlowDirection=two?FlowDirection.LeftToRight:FlowDirection.TopDown;toolRail.WrapContents=two;toolRail.Width=ToolPixels(labels?180:two?110:68)+((ToolbarScale>1||two)?SystemInformation.VerticalScrollBarWidth:0);
+            foreach(Control control in toolRail.Controls){bool separator=(string)control.Tag=="separator";if(separator){control.Width=ToolPixels(labels?145:two?84:29);control.Margin=UiPadding(two?new Padding(0,8,0,8):new Padding(7,8,0,8));}else {var button=control as ModernButton;if(button!=null){button.Width=ToolPixels(labels?150:40);button.Height=ToolPixels(32);button.UiScale=ToolbarScale*1.15f;var pair=tools.FirstOrDefault(item=>Object.ReferenceEquals(item.Value,button));button.Text=labels?(pair.Key=="Cut rows"?"Cut out":ToolDisplayName(pair.Key)):"";}control.Margin=UiPadding(two?new Padding(0,1,4,1):new Padding(0,1,0,1));}toolRail.SetFlowBreak(control,two&&(separator||(string)control.Tag=="group-end"));}
+            toolRail.AutoScroll=two||ToolbarScale>1||toolRail.ClientSize.Height<SingleColumnHeight();toolRail.ResumeLayout(true);
         }finally{rearrangingTools=false;}
     }
     public void VerifyResizeTools(List<string> report,string folder){

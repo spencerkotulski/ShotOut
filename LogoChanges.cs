@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Linq;
@@ -17,9 +17,9 @@ partial class Editor {
     }
     void BeginInlineRename() {
         if(Active==null||!Marks.Contains(Active))return;CloseInlineRename(true);renamingLayer=Active;
-        int index=Marks.Count-1-Marks.IndexOf(Active);layers.SelectedIndex=index;var bounds=layers.GetItemRectangle(index);
+        int index=layers.Items.IndexOf(Active);if(index<0)return;layers.SelectedIndex=index;var bounds=layers.GetItemRectangle(index);
         if(layerNameEditor==null) {
-            layerNameEditor=new TextBox {BorderStyle=BorderStyle.FixedSingle,BackColor=Color.FromArgb(43,49,63),ForeColor=Color.White,Font=Font};layers.Controls.Add(layerNameEditor);
+            layerNameEditor=new ThemedTextBox {BorderStyle=BorderStyle.FixedSingle,BackColor=Color.FromArgb(43,49,63),ForeColor=Color.White,Font=Font};layers.Controls.Add(layerNameEditor);ModernMenus.TextMenu(layerNameEditor);
             layerNameEditor.KeyDown+=delegate(object sender,KeyEventArgs e) {if(e.KeyCode==Keys.Enter||e.KeyCode==Keys.Escape){e.SuppressKeyPress=e.Handled=true;CloseInlineRename(e.KeyCode==Keys.Enter);View.Focus();}};
             layerNameEditor.Leave+=delegate {CloseInlineRename(true);};layers.MouseWheel+=delegate {CloseInlineRename(true);};
         }

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Drawing2D;
@@ -16,7 +16,7 @@ partial class Editor {
     float? imageGuideX,imageGuideY;
     static bool ReactiveStroke(string kind){return Art.IsArrow(kind)||new[]{"Rectangle","Rounded","Ellipse","Pen","Balloon","Magnify"}.Contains(kind);}
     void ChangeStrokeWidth(){
-        if(syncing||Active==null)return;
+        if(syncing)return;RememberStrokeOverride();if(Active==null)return;
         if(!ReactiveStroke(Active.Kind)||moving||resizing||dragging){ChangeStyle();return;}
         if(Active.Width==(float)thickness.Value)return;
         if(strokeAdjusting&&strokeTarget!=Active)FinishStrokeAdjustment();
@@ -25,18 +25,21 @@ partial class Editor {
         if(strokeTimer==null){strokeTimer=new Timer {Interval=140};strokeTimer.Tick+=delegate{FinishStrokeAdjustment();};Disposed+=delegate{strokeTimer.Dispose();};}
         strokeTimer.Stop();strokeTimer.Start();RefreshImage();
     }
-    void FinishStrokeAdjustment(){if(!strokeAdjusting)return;if(strokeTimer!=null)strokeTimer.Stop();if(textAdjusting&&strokeTarget!=null&&Marks.Contains(strokeTarget)){textAdjusting=false;GrowTextBox(strokeTarget,strokeTarget.Size);EnsureCanvasFitsMarks();}textAdjusting=false;strokeAdjusting=false;strokeTarget=null;RefreshImage();}
+    void FinishStrokeAdjustment(){if(!strokeAdjusting)return;if(strokeTimer!=null)strokeTimer.Stop();if(geometryAdjusting){geometryAdjusting=false;geometryTargets=null;EnsureCanvasFitsMarks();}if(circleSizeAdjusting){circleSizeAdjusting=false;circleSizeTargets=null;EnsureCanvasFitsMarks();}if(textAdjusting&&strokeTarget!=null&&Marks.Contains(strokeTarget)){textAdjusting=false;GrowTextBox(strokeTarget,strokeTarget.Size);EnsureCanvasFitsMarks();}textAdjusting=false;strokeAdjusting=false;strokeTarget=null;RefreshImage();}
     Bitmap BuildInteractionBase(){
-        if(dragFirst!=Marks.Count-1)return Art.Render(Background,Marks.Take(dragFirst).ToList(),true);
-        var bitmap=(Bitmap)Preview.Clone();if(draft!=null)return bitmap;
-        var area=Art.DrawingBounds(Marks[dragFirst],Background.Size);if(area.IsEmpty)return bitmap;
-        using(var graphics=Graphics.FromImage(bitmap)){graphics.CompositingMode=CompositingMode.SourceCopy;graphics.InterpolationMode=InterpolationMode.NearestNeighbor;graphics.PixelOffsetMode=PixelOffsetMode.Half;graphics.DrawImage(Background,area,area,GraphicsUnit.Pixel);}
-        for(int i=0;i<dragFirst;i++)if(Marks[i].Visible)Art.Draw(bitmap,Marks[i],true,area);return bitmap;
+        if(draft!=null&&dragFirst==Marks.Count-1)return (Bitmap)Preview.Clone();
+        // Reuse completed pixels outside the upper layers instead of rebuilding the whole document.
+        var area=Rectangle.Empty;
+        for(int i=dragFirst;i<Marks.Count;i++)if(Marks[i].Visible)area=UnionBounds(area,Art.DrawingBounds(Marks[i],Background.Size));
+        // Lower effects outside this area cannot contribute to its pixels. Keep the full renderer for overlapping effects.
+        bool readsPixels=Marks.Take(dragFirst).Any(mark=>mark.Visible&&Art.DrawingBounds(mark,Background.Size).IntersectsWith(area)&&(mark.Kind=="Blur"||mark.Kind=="Pixelate"||mark.Kind=="Magnify"||mark.Kind=="Grayscale"||mark.Kind=="Spotlight"));
+        if(readsPixels||(long)area.Width*area.Height>(long)Background.Width*Background.Height*3/4)return Art.Render(Background,Marks.Take(dragFirst).ToList(),true);
+        var bitmap=(Bitmap)Preview.Clone();if(area.IsEmpty)return bitmap;Art.CopyPixelRegion(Background,bitmap,area);for(int i=0;i<dragFirst;i++)if(Marks[i].Visible)Art.Draw(bitmap,Marks[i],true,area);return bitmap;
     }
     bool TryFinishDragPreview(){
         if(dragBase==null||Preview==null||!Object.ReferenceEquals(dragBackground,Background)||dragScene.Count!=Marks.Count||!dragScene.SequenceEqual(Marks))return false;
-        var area=ExpandDragDirty(UnionBounds(dragPreviousBounds,MutableBounds()));
-        if(!area.IsEmpty){using(var graphics=Graphics.FromImage(Preview)){graphics.CompositingMode=CompositingMode.SourceCopy;graphics.InterpolationMode=InterpolationMode.NearestNeighbor;graphics.PixelOffsetMode=PixelOffsetMode.Half;graphics.DrawImage(dragBase,area,area,GraphicsUnit.Pixel);}for(int i=dragFirst;i<Marks.Count;i++)if(Marks[i].Visible)Art.Draw(Preview,Marks[i],true,area);}
+        var area=ExpandDragDirty(UnionBounds(dragTouchedBounds,UnionBounds(dragPreviousBounds,MutableBounds())));
+        if(!area.IsEmpty){Art.CopyPixelRegion(dragBase,Preview,area);for(int i=dragFirst;i<Marks.Count;i++)if(Marks[i].Visible)Art.Draw(Preview,InlinePreviewMark(Marks[i]),true,area);}
         EndDragPreview();View.InvalidateMarkupCache();return true;
     }
     void BeginImageSnapping(){var images=SelectedObjects().Where(mark=>mark.Kind=="Image").ToList();imageSnapAnchor=images.Count==1?images[0]:null;imageSnapping=imageSnapAnchor!=null;if(imageSnapping){imageDragStart=new PointF(imageSnapAnchor.X,imageSnapAnchor.Y);imageDragVisible=imageSnapAnchor.VisibleBounds;imageSnapping=!imageDragVisible.IsEmpty;}}
@@ -55,8 +58,9 @@ partial class Editor {
         SetTool("Arrow");View.Zoom=1;View.PanX=View.PanY=0;var origin=View.Origin;Func<float,float,MouseEventArgs> mouse=(x,y)=>new MouseEventArgs(MouseButtons.Left,1,(int)Math.Round(origin.X+x*View.Zoom),(int)Math.Round(origin.Y+y*View.Zoom),0);buffer=Preview;CanvasDownWithModifiers(mouse(1000,1000),Keys.Control);CanvasMove(mouse(1400,1200));PrepareDragFrame();CanvasUp(mouse(1400,1200));check(Object.ReferenceEquals(buffer,Preview)&&Marks.Last().Kind=="Arrow","Drawing and completing an arrow reuses the screenshot buffer");
         report.Add("4K reactive stroke benchmark: "+perStep.ToString("F2")+" ms/change including initial cache setup; steady changes "+steady.ToString("F2")+" ms/change.");System.IO.File.WriteAllText(System.IO.Path.Combine(folder,"reactive-stroke-benchmark.txt"),"Synthetic 4K screenshot. Eight stroke-size changes, including one-time interaction cache: "+perStep.ToString("F2")+" ms/change. First change/setup: "+firstStep.ToString("F2")+" ms. Subsequent changes: "+steady.ToString("F2")+" ms/change. Measures compositing and input processing, not display latency.");
         AddEditableBackdrop(24);AddGrayscaleAdjustment();var colored=new Mark {Kind="Arrow",X=900,Y=1000,W=450,H=140,Width=4,Color=Color.Red.ToArgb()};Marks.Add(colored);Active=colored;Selected.Clear();Selected.Add(colored);SyncStyle();RefreshImage();buffer=Preview;thickness.Value=10;PrepareDragFrame();thickness.Value=14;PrepareDragFrame();FinishStrokeAdjustment();using(var expected=Art.Render(Background,Marks)){var area=Art.DrawingBounds(colored,Background.Size);bool same=true;for(int y=area.Top;y<area.Bottom&&same;y++)for(int x=area.Left;x<area.Right;x++)if(expected.GetPixel(x,y)!=Preview.GetPixel(x,y)){same=false;break;}check(same&&Object.ReferenceEquals(buffer,Preview),"Fast stroke updates preserve presentation background and grayscale compositing");}
-        LoadImageDocument(Blank(200,100),"Presentation snapping");AddEditableBackdrop(100);var image=Marks[0];Active=image;Selected.Clear();Selected.Add(image);View.Zoom=1;start=new PointF(120,120);BeginImageSnapping();MoveSnappedImage(new PointF(123,122),Keys.None);check(image.X==100&&image.Y==100&&imageGuideX==200&&imageGuideY==150,"Presentation image snaps to both canvas center guides");MoveSnappedImage(new PointF(143,142),Keys.None);check(image.X==123&&image.Y==122,"Dragging beyond threshold releases center snap without sticking");MoveSnappedImage(new PointF(123,122),Keys.Alt);check(image.X==103&&image.Y==102&&!imageGuideX.HasValue&&!imageGuideY.HasValue,"Alt temporarily bypasses snapping for precise placement");ClearImageSnapping();check(!imageSnapping&&!imageGuideX.HasValue,"Finishing image drag clears alignment guides");float? guide;float third=SnapImageAxis(30,200,new[]{400f/3},6,out guide);check(Math.Abs(third-(400f/3-100))<.01,"Images can snap to off-center thirds");
-        Active=new Mark {Kind="Rectangle"};BeginImageSnapping();check(!imageSnapping,"Annotation dragging is not altered by image snapping");Active=image;Selected.Clear();Selected.Add(image);start=new PointF(120,120);image.X=image.Y=100;BeginImageSnapping();MoveSnappedImage(new PointF(123,122),Keys.None);RefreshImage();Show();Application.DoEvents();using(var screenshot=new Bitmap(Width,Height)){DrawToBitmap(screenshot,new Rectangle(Point.Empty,screenshot.Size));screenshot.Save(System.IO.Path.Combine(folder,"image-alignment-guides.png"));}Hide();ClearImageSnapping();LoadImageDocument(Blank(400,200),"Cropped image snapping");SetTool("Crop");Crop=new RectangleF(20,20,200,100);CommitCrop();AddEditableBackdrop(100);Active=Marks[0];Selected.Clear();Selected.Add(Active);View.Zoom=1;start=new PointF(120,120);BeginImageSnapping();MoveSnappedImage(new PointF(123,122),Keys.None);check(Active.X==80&&Active.Y==80&&imageGuideX==200&&imageGuideY==150,"Cropped images snap using visible pixels rather than hidden source bounds");ClearImageSnapping();LoadBitmap(Blank(100,100),"Test");
+        LoadImageDocument(Blank(200,100),"Presentation snapping");AddEditableBackdrop(100);var image=Marks.First(mark=>mark.Kind=="Image");image.ImageMovementLocked=false;Active=image;Selected.Clear();Selected.Add(image);View.Zoom=1;start=new PointF(120,120);BeginImageSnapping();MoveSnappedImage(new PointF(123,122),Keys.None);check(image.X==100&&image.Y==100&&imageGuideX==200&&imageGuideY==150,"Presentation image snaps to both canvas center guides");MoveSnappedImage(new PointF(143,142),Keys.None);check(image.X==123&&image.Y==122,"Dragging beyond threshold releases center snap without sticking");MoveSnappedImage(new PointF(123,122),Keys.Alt);check(image.X==103&&image.Y==102&&!imageGuideX.HasValue&&!imageGuideY.HasValue,"Alt temporarily bypasses snapping for precise placement");ClearImageSnapping();check(!imageSnapping&&!imageGuideX.HasValue,"Finishing image drag clears alignment guides");float? guide;float third=SnapImageAxis(30,200,new[]{400f/3},6,out guide);check(Math.Abs(third-(400f/3-100))<.01,"Images can snap to off-center thirds");
+        Active=new Mark {Kind="Rectangle"};BeginImageSnapping();check(!imageSnapping,"Annotation dragging is not altered by image snapping");Active=image;Selected.Clear();Selected.Add(image);start=new PointF(120,120);image.X=image.Y=100;BeginImageSnapping();MoveSnappedImage(new PointF(123,122),Keys.None);RefreshImage();Show();Application.DoEvents();using(var screenshot=new Bitmap(Width,Height)){DrawToBitmap(screenshot,new Rectangle(Point.Empty,screenshot.Size));screenshot.Save(System.IO.Path.Combine(folder,"image-alignment-guides.png"));}Hide();ClearImageSnapping();LoadImageDocument(Blank(400,200),"Cropped image snapping");SetTool("Crop");Crop=new RectangleF(20,20,200,100);CommitCrop();AddEditableBackdrop(100);Active=Marks.First(mark=>mark.Kind=="Image");Active.ImageMovementLocked=false;Selected.Clear();Selected.Add(Active);View.Zoom=1;start=new PointF(120,120);BeginImageSnapping();MoveSnappedImage(new PointF(123,122),Keys.None);check(Active.X==80&&Active.Y==80&&imageGuideX==200&&imageGuideY==150,"Cropped images snap using visible pixels rather than hidden source bounds");ClearImageSnapping();LoadBitmap(Blank(100,100),"Test");
     }
 }
 }
+
